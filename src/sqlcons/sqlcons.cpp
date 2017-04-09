@@ -59,7 +59,7 @@ public:
     sql_data_type sql_data_type_;
     std::vector<WCHAR> stringValue_;
     double doubleValue_;
-    int32_t integerValue_;
+    int integerValue_;
     SQLLEN indPtr;  // size or null
 
     sql_column_impl(std::wstring&& name,
@@ -359,7 +359,7 @@ void sql_query::execute(sql_connection::impl* conn,
                            &decimalDigits,  
                            &nullable);  
 
-            std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << std::endl;
+            std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
             columns.push_back(
                 sql_column_impl(std::wstring(&name[0],nameLength),
                                 dataType,
@@ -388,7 +388,7 @@ void sql_query::execute(sql_connection::impl* conn,
             case SQL_TINYINT:
                 break;
             case SQL_INTEGER:
-                type = sql_data_type::string_t;
+                type = sql_data_type::integer_t;
                 std::wcout << std::wstring(&name[0], nameLength) << " " << "INTEGER" << std::endl;
                 break;
             case SQL_BIGINT:
@@ -449,12 +449,11 @@ void sql_query::execute(sql_connection::impl* conn,
                 }
                 break;
             case sql_data_type::integer_t:
-                std::cout << "BOUND to INTEGER" << std::endl;
                 rc = SQLBindCol(hStmt_,
                     col, 
-                    SQL_INTEGER,
+                    SQL_C_SBIGINT,
                     (SQLPOINTER)&(columns.back().integerValue_), 
-                    sizeof(columns.back().integerValue_), 
+                    0, 
                     &(columns.back().indPtr)); 
                 if (rc == SQL_ERROR)
                 {
@@ -465,10 +464,9 @@ void sql_query::execute(sql_connection::impl* conn,
             case sql_data_type::double_t:
                 rc = SQLBindCol(hStmt_, 
                     col, 
-                    //SQL_C_TCHAR, 
                     SQL_C_DOUBLE,
                     (SQLPOINTER)&(columns.back().doubleValue_), 
-                    sizeof(double), 
+                    0, 
                     &(columns.back().indPtr)); 
                 if (rc == SQL_ERROR)
                 {
@@ -523,7 +521,7 @@ void sql_query::execute(sql_connection::impl* conn,
                         std::wcout << columns[i].doubleValue_ << std::endl; 
                         break;
                     case sql_data_type::integer_t:
-                        std::wcout << columns[i].integerValue_ << std::endl; 
+                        std::wcout << columns[i].integerValue_ << std::endl;
                         break;
                     }
                 }
