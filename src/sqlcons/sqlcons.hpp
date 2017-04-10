@@ -85,6 +85,7 @@ class sql_connection
 {
 public:
     friend class sql_statement;
+    friend class sql_prepared_statement;
 
     sql_connection();
     ~sql_connection();
@@ -108,7 +109,7 @@ public:
     sql_prepared_statement();
     ~sql_prepared_statement();
 
-    void open(const std::string& connString, std::error_code& ec);
+    void prepare(sql_connection& conn, const std::string& query, std::error_code& ec);
 
     void execute(std::error_code& ec);
     void execute(const std::function<void(const sql_record& record)>& callback,
