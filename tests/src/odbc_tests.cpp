@@ -46,3 +46,27 @@ TEST_CASE("odbc_tests")
     }
 } 
 
+TEST_CASE("sql_prepared_statement") 
+{
+    std::error_code ec;
+
+    sql_connection connection;
+    connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    sql_prepared_statement statement;
+    statement.prepare(connection,
+        "select instrument_id, observation_date, price from instrument_price where instrument_id = ?",
+        ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+} 
+

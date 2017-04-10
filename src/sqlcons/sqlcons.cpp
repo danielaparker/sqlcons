@@ -276,6 +276,10 @@ void sql_prepared_statement::impl::prepare(SQLHDBC hDbc,
 
 // sql_prepared_statement
 
+sql_prepared_statement::sql_prepared_statement() : pimpl_(new impl()) {}
+
+sql_prepared_statement::~sql_prepared_statement() = default;
+
 void sql_prepared_statement::prepare(sql_connection& conn, const std::string& connString, std::error_code& ec)
 {
     pimpl_->prepare(conn.pimpl_->hDbc_,connString, ec);
@@ -345,7 +349,7 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
     rc = SQLDriverConnect(hDbc_, 
                          NULL, 
                          &cs[0], 
-                         cs.size(), 
+                         (SQLSMALLINT)cs.size(), 
                          NULL, 
                          0, 
                          NULL,
@@ -467,7 +471,7 @@ void sql_statement::execute(SQLHDBC hDbc,
     if (numColumns > 0) 
     { 
 
-        for (size_t col = 1; col <= numColumns; col++) 
+        for (SQLUSMALLINT col = 1; col <= numColumns; col++) 
         { 
             SQLSMALLINT columnNameLength = 100;
 
