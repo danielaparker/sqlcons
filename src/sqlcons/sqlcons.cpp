@@ -1,6 +1,8 @@
 #include <sqlcons/sqlcons.hpp>
 #include <windows.h> 
-#include <sql.h> 
+//#include <sql.h> 
+
+#define UNICODE  
 #include <sqlext.h> 
 #include <stdio.h> 
 #include <conio.h> 
@@ -10,22 +12,7 @@
 #include <sqlcons/unicode_traits.hpp>
 #include <vector>
 
-#define DISPLAY_MAX 50          // Arbitrary limit on column width to display 
-#define DISPLAY_FORMAT_EXTRA 3  // Per column extra display bytes (| <data> ) 
-#define DISPLAY_FORMAT      L"%c %*.*s " 
-#define DISPLAY_FORMAT_C    L"%c %-*.*s " 
-#define NULL_SIZE           6   // <NULL> 
-#define PIPE                L'|' 
- 
 namespace sqlcons {
-
-typedef struct STR_BINDING { 
-    SQLSMALLINT         cDisplaySize;           /* size to display  */ 
-    WCHAR               *wszBuffer;             /* display buffer   */ 
-    SQLLEN              indPtr;                 /* size or null     */ 
-    BOOL                fChar;                  /* character col?   */ 
-    struct STR_BINDING  *sNext;                 /* linked list      */ 
-} BINDING; 
 
 void handle_diagnostic_record(SQLHANDLE hHandle,
                               SQLSMALLINT hType,
@@ -57,9 +44,9 @@ public:
     SQLSMALLINT nullable_;
 
     sql_data_type sql_data_type_;
+    long integerValue_;
     std::vector<WCHAR> stringValue_;
     double doubleValue_;
-    int integerValue_;
     SQLLEN indPtr;  // size or null
 
     sql_column_impl(std::wstring&& name,
@@ -73,8 +60,58 @@ public:
           decimalDigits_(decimalDigits),
           nullable_(nullable),
           integerValue_(0),
-          doubleValue_(0.0)
+          doubleValue_(0.0),
+          indPtr(0)
     {
+    }
+
+    bool is_null() const
+    {
+        return indPtr == SQL_NULL_DATA;
+    }
+
+    std::wstring as_wstring() const override
+    {
+        switch (sql_data_type_)
+        {
+        case sql_data_type::string_t:
+            {
+                return std::wstring(stringValue_.data(), stringValue_.data()+ stringValue_.size());
+            }
+            break;
+        default:
+            return L"";
+        }
+    }
+
+    double as_double() const override
+    {
+        switch (sql_data_type_)
+        {
+        case sql_data_type::integer_t:
+            return (double)integerValue_;
+            break;
+        case sql_data_type::double_t:
+            return doubleValue_;
+            break;
+        default:
+            return 99;
+        }
+    }
+
+    long as_long() const override
+    {
+        switch (sql_data_type_)
+        {
+        case sql_data_type::integer_t:
+            return integerValue_;
+            break;
+        case sql_data_type::double_t:
+            return (long)doubleValue_;
+            break;
+        default:
+            return 99;
+        }
     }
 };
 
@@ -320,7 +357,9 @@ void sql_query::execute(sql_connection::impl* conn,
         handle_diagnostic_record(conn->hEnv_, SQL_ATTR_ODBC_VERSION, rc, ec);
         return;
     }
+    std::cout << "numColumns = " << numColumns << std::endl;
     std::vector<sql_column_impl> columns;
+    columns.reserve(numColumns);
     if (numColumns > 0) 
     { 
 
@@ -386,13 +425,9 @@ void sql_query::execute(sql_connection::impl* conn,
                 break;
             case SQL_SMALLINT:
             case SQL_TINYINT:
-                break;
             case SQL_INTEGER:
-                type = sql_data_type::integer_t;
-                std::wcout << std::wstring(&name[0], nameLength) << " " << "INTEGER" << std::endl;
-                break;
             case SQL_BIGINT:
-                type = sql_data_type::string_t;
+                type = sql_data_type::integer_t;
                 std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
                 break;
             case SQL_WVARCHAR:
@@ -449,9 +484,10 @@ void sql_query::execute(sql_connection::impl* conn,
                 }
                 break;
             case sql_data_type::integer_t:
+                std::cout << "BIND TO INT" << std::endl;
                 rc = SQLBindCol(hStmt_,
                     col, 
-                    SQL_C_SBIGINT,
+                    SQL_C_ULONG,
                     (SQLPOINTER)&(columns.back().integerValue_), 
                     0, 
                     &(columns.back().indPtr)); 
@@ -510,24 +546,9 @@ void sql_query::execute(sql_connection::impl* conn,
             } 
             else 
             { 
-                for (size_t i = 0; i < columns.size(); ++i)
-                {
-                    switch (columns[i].sql_data_type_)
-                    {
-                    case sql_data_type::string_t:
-                        std::wcout << std::wstring(&columns[i].stringValue_[0], columns[i].stringValue_.size()) << std::endl;
-                        break;
-                    case sql_data_type::double_t:
-                        std::wcout << columns[i].doubleValue_ << std::endl; 
-                        break;
-                    case sql_data_type::integer_t:
-                        std::wcout << columns[i].integerValue_ << std::endl;
-                        break;
-                    }
-                }
+                callback(record);
             }
 
-            callback(record);
         } while (!fNoData); 
     }  
 }

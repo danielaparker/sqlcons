@@ -13,11 +13,21 @@
 #include <iostream>
 #include <sqlcons/unicode_traits.hpp>
 
+using namespace sqlcons;
+
+void callback(const sql_record& record)
+{
+    const sql_column& column = record[0];
+    std::wcout << record[0].as_double() << " " 
+               << record[1].as_double()  
+               << std::endl;
+}
+
 TEST_CASE("odbc_tests") 
 {
     std::error_code ec;
 
-    sqlcons::sql_connection connection;
+    sql_connection connection;
     connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", ec);
     if (ec)
     {
@@ -25,8 +35,8 @@ TEST_CASE("odbc_tests")
         return;
     }
 
-    connection.execute("select * from instrument_price",
-                       [](const sqlcons::sql_record& record){},
+    connection.execute("select instrument_id, instrument_id as price2 from instrument_price",
+                       callback,
                        ec);
     if (ec)
     {
