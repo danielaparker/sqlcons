@@ -79,22 +79,40 @@ private:
     std::map<std::string,sql_column*> column_map_;
 };
 
-
 // sql_connection
 
 class sql_connection
 {
 public:
-    friend class sql_query;
+    friend class sql_statement;
 
     sql_connection();
+    ~sql_connection();
+
     void open(const std::string& connString, std::error_code& ec);
     void execute(const std::string query, 
                  std::error_code& ec);
     void execute(const std::string query, 
                  const std::function<void(const sql_record& record)>& callback,
                  std::error_code& ec);
-    ~sql_connection();
+private:
+    class impl;
+    std::unique_ptr<impl> pimpl_;
+};
+
+// sql_prepared_statement
+
+class sql_prepared_statement
+{
+public:
+    sql_prepared_statement();
+    ~sql_prepared_statement();
+
+    void open(const std::string& connString, std::error_code& ec);
+
+    void execute(std::error_code& ec);
+    void execute(const std::function<void(const sql_record& record)>& callback,
+                 std::error_code& ec);
 private:
     class impl;
     std::unique_ptr<impl> pimpl_;

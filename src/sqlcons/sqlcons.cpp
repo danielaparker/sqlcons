@@ -199,18 +199,18 @@ public:
                  std::error_code& ec);
 };
 
-// sql_query
+// sql_statement
 
-class sql_query
+class sql_statement
 {
     SQLHSTMT    hStmt_; 
 public:
-    sql_query()
+    sql_statement()
         : hStmt_(nullptr)
     {
     }
 
-    ~sql_query()
+    ~sql_statement()
     {
         if (hStmt_) 
         { 
@@ -232,14 +232,14 @@ void sql_connection::impl::execute(const std::string query,
                                    const std::function<void(const sql_record& record)>& callback,
                                    std::error_code& ec)
 {
-    sql_query q;
+    sql_statement q;
     q.execute(this,query,callback,ec);
 }
 
 void sql_connection::impl::execute(const std::string query, 
                                    std::error_code& ec)
 {
-    sql_query q;
+    sql_statement q;
     q.execute(this,query,ec);
 }
 
@@ -375,7 +375,7 @@ void sql_connection::execute(const std::string query,
 }
 
 
-void sql_query::execute(sql_connection::impl* conn, 
+void sql_statement::execute(sql_connection::impl* conn, 
                         const std::string query, 
                         const std::function<void(const sql_record& record)>& callback,
                         std::error_code& ec)
@@ -602,7 +602,7 @@ void sql_query::execute(sql_connection::impl* conn,
     }  
 }
 
-void sql_query::execute(sql_connection::impl* conn, 
+void sql_statement::execute(sql_connection::impl* conn, 
                         const std::string query, 
                         std::error_code& ec)
 {
