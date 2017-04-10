@@ -47,7 +47,7 @@ public:
     long integerValue_;
     std::vector<WCHAR> stringValue_;
     double doubleValue_;
-    SQLLEN indPtr;  // size or null
+    SQLLEN length_or_null_;  // size or null
 
     sql_column_impl(std::wstring&& name,
                     SQLSMALLINT dataType,
@@ -61,13 +61,13 @@ public:
           nullable_(nullable),
           integerValue_(0),
           doubleValue_(0.0),
-          indPtr(0)
+          length_or_null_(0)
     {
     }
 
     bool is_null() const
     {
-        return indPtr == SQL_NULL_DATA;
+        return length_or_null_ == SQL_NULL_DATA;
     }
 
     std::wstring as_wstring() const override
@@ -75,12 +75,42 @@ public:
         switch (sql_data_type_)
         {
         case sql_data_type::string_t:
+            if (is_null())
             {
-                return std::wstring(stringValue_.data(), stringValue_.data()+ stringValue_.size());
+                return L"";
+            }
+            else
+            {
+                size_t len = length_or_null_/sizeof(wchar_t);
+                return std::wstring(stringValue_.data(), stringValue_.data() + len);
             }
             break;
         default:
             return L"";
+        }
+    }
+
+    std::string as_string() const override
+    {
+        switch (sql_data_type_)
+        {
+        case sql_data_type::string_t:
+            if (is_null())
+            {
+                return "";
+            }
+            else
+            {
+                size_t len = length_or_null_/sizeof(wchar_t);
+                std::string s;
+                auto result1 = unicons::convert(stringValue_.begin(),stringValue_.begin() + len,
+                                                std::back_inserter(s), 
+                                                unicons::conv_flags::strict);
+                return s;
+            }
+            break;
+        default:
+            return "";
         }
     }
 
@@ -475,7 +505,7 @@ void sql_query::execute(sql_connection::impl* conn,
                         SQL_C_WCHAR, 
                         (SQLPOINTER)&(columns.back().stringValue_[0]), 
                         size, 
-                        &(columns.back().indPtr)); 
+                        &(columns.back().length_or_null_)); 
                     if (rc == SQL_ERROR)
                     {
                         handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
@@ -490,7 +520,7 @@ void sql_query::execute(sql_connection::impl* conn,
                     SQL_C_ULONG,
                     (SQLPOINTER)&(columns.back().integerValue_), 
                     0, 
-                    &(columns.back().indPtr)); 
+                    &(columns.back().length_or_null_)); 
                 if (rc == SQL_ERROR)
                 {
                     handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
@@ -503,7 +533,7 @@ void sql_query::execute(sql_connection::impl* conn,
                     SQL_C_DOUBLE,
                     (SQLPOINTER)&(columns.back().doubleValue_), 
                     0, 
-                    &(columns.back().indPtr)); 
+                    &(columns.back().length_or_null_)); 
                 if (rc == SQL_ERROR)
                 {
                     handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);

@@ -53,6 +53,8 @@ class sql_column
 public:
     virtual ~sql_column() = default;
 
+    virtual std::string as_string() const = 0;
+
     virtual std::wstring as_wstring() const = 0;
 
     virtual double as_double() const = 0;

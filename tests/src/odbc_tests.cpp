@@ -18,9 +18,10 @@ using namespace sqlcons;
 void callback(const sql_record& record)
 {
     const sql_column& column = record[0];
-    std::wcout << record[0].as_double() << " " 
-               << record[1].as_double()  
-               << std::endl;
+    std::cout << record[0].as_long() << " " 
+              << record[1].as_string() << " " 
+              << record[2].as_double()  
+              << std::endl;
 }
 
 TEST_CASE("odbc_tests") 
@@ -35,7 +36,7 @@ TEST_CASE("odbc_tests")
         return;
     }
 
-    connection.execute("select instrument_id, instrument_id as price2 from instrument_price",
+    connection.execute("select instrument_id, observation_date, price from instrument_price",
                        callback,
                        ec);
     if (ec)
