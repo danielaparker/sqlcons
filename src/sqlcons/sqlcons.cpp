@@ -14,6 +14,10 @@
 
 namespace sqlcons {
 
+const int sql_data_types::integer_id = SQL_BIGINT;
+
+const int sql_c_data_types::integer_id = SQL_C_SBIGINT;
+
 void handle_diagnostic_record(SQLHANDLE hHandle,
                               SQLSMALLINT hType,
                               RETCODE RetCode,

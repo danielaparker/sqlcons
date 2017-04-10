@@ -68,5 +68,8 @@ TEST_CASE("sql_prepared_statement")
         return;
     }
 
+    auto parameters = std::make_tuple(1);
+    statement.execute(parameters,callback,ec);
+
 } 
 
