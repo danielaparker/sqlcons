@@ -193,6 +193,8 @@ public:
 
     void open(const std::string& connString, std::error_code& ec);
     void execute(const std::string query, 
+                 std::error_code& ec);
+    void execute(const std::string query, 
                  const std::function<void(const sql_record& record)>& callback,
                  std::error_code& ec);
 };
@@ -218,6 +220,10 @@ public:
 
     void execute(sql_connection::impl* conn, 
                  const std::string query, 
+                 std::error_code& ec);
+
+    void execute(sql_connection::impl* conn, 
+                 const std::string query, 
                  const std::function<void(const sql_record& record)>& callback,
                  std::error_code& ec);
 };
@@ -228,6 +234,13 @@ void sql_connection::impl::execute(const std::string query,
 {
     sql_query q;
     q.execute(this,query,callback,ec);
+}
+
+void sql_connection::impl::execute(const std::string query, 
+                                   std::error_code& ec)
+{
+    sql_query q;
+    q.execute(this,query,ec);
 }
 
 void sql_connection::impl::open(const std::string& connString, std::error_code& ec)
@@ -346,6 +359,12 @@ sql_connection::~sql_connection() = default;
 void sql_connection::open(const std::string& connString, std::error_code& ec)
 {
     pimpl_->open(connString, ec);
+}
+
+void sql_connection::execute(const std::string query, 
+                             std::error_code& ec)
+{
+    pimpl_->execute(query, ec);
 }
 
 void sql_connection::execute(const std::string query, 
@@ -581,6 +600,30 @@ void sql_query::execute(sql_connection::impl* conn,
 
         } while (!fNoData); 
     }  
+}
+
+void sql_query::execute(sql_connection::impl* conn, 
+                        const std::string query, 
+                        std::error_code& ec)
+{
+    std::wstring buf;
+    auto result1 = unicons::convert(query.begin(), query.end(),
+                                    std::back_inserter(buf), 
+                                    unicons::conv_flags::strict);
+
+    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, conn->hDbc_, &hStmt_);
+    if (rc == SQL_ERROR)
+    {
+        handle_diagnostic_record(conn->hEnv_, SQL_ATTR_ODBC_VERSION, rc, ec);
+        return;
+    }
+
+    rc = SQLExecDirect(hStmt_, &buf[0], (SQLINTEGER)buf.size()); 
+    if (rc == SQL_ERROR)
+    {
+        handle_diagnostic_record(conn->hEnv_, SQL_ATTR_ODBC_VERSION, rc, ec);
+        return;
+    }
 }
 
 }

@@ -90,6 +90,8 @@ public:
     sql_connection();
     void open(const std::string& connString, std::error_code& ec);
     void execute(const std::string query, 
+                 std::error_code& ec);
+    void execute(const std::string query, 
                  const std::function<void(const sql_record& record)>& callback,
                  std::error_code& ec);
     ~sql_connection();
