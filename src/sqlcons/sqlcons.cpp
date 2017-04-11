@@ -14,9 +14,9 @@
 
 namespace sqlcons {
 
-const int sql_data_types::integer_id = SQL_BIGINT;
+const int sql_data_types::integer_id = SQL_INTEGER;
 
-const int sql_c_data_types::integer_id = SQL_C_SBIGINT;
+const int sql_c_data_types::integer_id = SQL_C_SLONG;
 
 void handle_diagnostic_record(SQLHANDLE hHandle,
                               SQLSMALLINT hType,
@@ -264,12 +264,27 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
                                               std::error_code& ec)
 {
     RETCODE rc;
+    long val = 1;
+    SQLLEN ind = 0;
 
+    std::cout << "Num bindings: " << bindings.size() << std::endl;
     for (size_t i = 0; i < bindings.size(); ++i)
     {
-        std::cout << "sql_type_identifier=" << bindings[i]->sql_type_identifier_ << std::endl;
-        rc = SQLBindParameter(hStmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,  
+        std::cout << "c_type_identifier=" << bindings[i]->c_type_identifier_ << ", " << SQL_C_SLONG<< std::endl;
+        std::cout << "sql_type_identifier=" << bindings[i]->sql_type_identifier_ << ", " << SQL_INTEGER<< std::endl;
+        std::cout << "value=" << *(long*)(bindings[i]->pvalue()) << std::endl;
+        /*rc = SQLBindParameter(hStmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,  
                               bindings[i]->pvalue(), 0, bindings[i]->pind());
+        if (rc == SQL_ERROR)
+        {
+            handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
+            return;
+        }*/
+    }
+    for (size_t i = 0; i < bindings.size(); ++i)
+    {
+        rc = SQLBindParameter(hStmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
+                              bindings[i]->pvalue(), 0, &ind);
         if (rc == SQL_ERROR)
         {
             handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
@@ -282,6 +297,19 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
     {
         handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
         return;
+    }
+
+    if (rc == SQL_PARAM_DATA_AVAILABLE)
+    {
+        std::cout << "SQL_PARAM_DATA_AVAILABLE" << std::endl;
+    }
+    if (rc == NO_DATA)
+    {
+        std::cout << "NO_DATA" << std::endl;
+    }
+    if (rc == SQL_NEED_DATA)
+    {
+        std::cout << "SQL_NEED_DATA" << std::endl;
     }
 
     SQLSMALLINT numColumns; 
@@ -604,54 +632,6 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
     }
 }
 
- 
-/************************************************************************ 
-/* handle_diagnostic_record : display error/warning information 
-/* 
-/* Parameters: 
-/*      hHandle     ODBC handle 
-/*      hType       Type of handle (HANDLE_STMT, HANDLE_ENV, HANDLE_DBC) 
-/*      RetCode     Return code of failing command 
-/************************************************************************/ 
- 
-void handle_diagnostic_record (SQLHANDLE      hHandle,     
-                             SQLSMALLINT    hType,   
-                             RETCODE        RetCode,
-                             std::error_code& ec) 
-{ 
-    SQLSMALLINT iRec = 0; 
-    SQLINTEGER  iError; 
-    WCHAR       wszMessage[1000]; 
-    WCHAR       wszState[SQL_SQLSTATE_SIZE+1]; 
- 
- 
-    if (RetCode == SQL_INVALID_HANDLE) 
-    { 
-        ec = make_error_code(sql_errc::db_err);
-        fwprintf(stderr, L"Invalid handle!\n"); 
-        return; 
-    } 
- 
-    while (SQLGetDiagRec(hType, 
-                         hHandle, 
-                         ++iRec, 
-                         wszState, 
-                         &iError, 
-                         wszMessage, 
-                         (SQLSMALLINT)(sizeof(wszMessage) / sizeof(WCHAR)), 
-                         (SQLSMALLINT *)NULL) == SQL_SUCCESS) 
-    { 
-        // Hide data truncated.. 
-        if (wcsncmp(wszState, L"01004", 5)) 
-        { 
-            fwprintf(stderr, L"[%5.5s] %s (%d)\n", wszState, wszMessage, iError); 
-        } 
-    } 
-      
-    ec = make_error_code(sql_errc::db_err);
-
-} 
-
 // sql_connection
 
 sql_connection::sql_connection() : pimpl_(new impl()) {}
@@ -926,5 +906,83 @@ void sql_statement::execute(SQLHDBC hDbc,
         return;
     }
 }
+
+struct odbc_error_codes
+{
+    std::map<const wchar_t*,sql_errc> code_map;
+
+    odbc_error_codes()
+    {
+        code_map[L"01000"] = sql_errc::E_01000;
+        code_map[L"08S01"] = sql_errc::E_08S01;
+        code_map[L"HY000"] = sql_errc::E_HY000;
+        code_map[L"HY001"] = sql_errc::E_HY001;
+        code_map[L"HY008"] = sql_errc::E_HY008;
+        code_map[L"HY013"] = sql_errc::E_HY013;
+        code_map[L"HY117"] = sql_errc::E_HY117;
+        code_map[L"HYT01"] = sql_errc::E_HYT01;
+        code_map[L"IM001"] = sql_errc::E_IM001;
+        code_map[L"IM017"] = sql_errc::E_IM017;
+        code_map[L"IM018"] = sql_errc::E_IM018;
+    }
+
+    std::error_code get_error_code(const wchar_t* state)
+    {
+        auto it = code_map.find(state);
+        sql_errc ec = (it == code_map.end()) ? sql_errc::db_err : it->second;
+        return make_error_code(ec);
+    }
+};
+ 
+/************************************************************************ 
+/* handle_diagnostic_record : display error/warning information 
+/* 
+/* Parameters: 
+/*      hHandle     ODBC handle 
+/*      hType       Type of handle (HANDLE_STMT, HANDLE_ENV, HANDLE_DBC) 
+/*      RetCode     Return code of failing command 
+/************************************************************************/ 
+ 
+void handle_diagnostic_record (SQLHANDLE      hHandle,     
+                              SQLSMALLINT    hType,   
+                              RETCODE        RetCode,
+                              std::error_code& ec) 
+{ 
+    static odbc_error_codes error_codes;
+
+    SQLSMALLINT iRec = 0; 
+    SQLINTEGER  iError; 
+    WCHAR       wszMessage[1000]; 
+    WCHAR       wszState[SQL_SQLSTATE_SIZE+1]; 
+ 
+ 
+    if (RetCode == SQL_INVALID_HANDLE) 
+    { 
+        ec = make_error_code(sql_errc::db_err);
+        fwprintf(stderr, L"Invalid handle!\n"); 
+        return; 
+    } 
+ 
+    while (SQLGetDiagRec(hType, 
+                         hHandle, 
+                         ++iRec, 
+                         wszState, 
+                         &iError, 
+                         wszMessage, 
+                         (SQLSMALLINT)(sizeof(wszMessage) / sizeof(WCHAR)), 
+                         (SQLSMALLINT *)NULL) == SQL_SUCCESS) 
+    { 
+        // Hide data truncated.. 
+        if (wcsncmp(wszState, L"01004", 5)) 
+        { 
+            fwprintf(stderr, L"[%5.5s] %s (%d)\n", wszState, wszMessage, iError); 
+        }
+        else
+        {
+            ec = error_codes.get_error_code(wszState);
+            break;
+        }
+    } 
+} 
 
 }
