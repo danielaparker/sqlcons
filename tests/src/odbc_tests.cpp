@@ -70,6 +70,11 @@ TEST_CASE("sql_prepared_statement")
 
     auto parameters = std::make_tuple(1);
     statement.execute(parameters,callback,ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
 
 } 
 

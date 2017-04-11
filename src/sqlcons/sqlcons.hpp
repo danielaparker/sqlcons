@@ -133,42 +133,83 @@ private:
 
 // sql_prepared_statement
 
-struct parameter_info
+struct parameter_binding
 {
-    parameter_info()
+    parameter_binding()
         : sql_type_identifier_(0),
         c_type_identifier_(0)
     {
     }
-    parameter_info(int sql_type_identifier,int c_type_identifier)
+    parameter_binding(int sql_type_identifier,int c_type_identifier)
         : sql_type_identifier_(sql_type_identifier), 
           c_type_identifier_(c_type_identifier)
     {
     }
+    virtual void* pvalue() = 0;
+
+    int parameter_type() const
+    {
+        return sql_type_identifier_;
+    }
+
+    int value_type() const
+    {
+        return c_type_identifier_;
+    }
+
+    size_t column_size() const
+    {
+        return 0;
+    }
+
+    int64_t* pind() 
+    {
+        return &ind_;
+    }
+
+    int64_t ind_;
     int sql_type_identifier_;
     int c_type_identifier_;
+};
+
+template <class T>
+struct parameter : public parameter_binding
+{
+    parameter(int sql_type_identifier,int c_type_identifier, const T& value)
+        : parameter_binding(sql_type_identifier, c_type_identifier), value_(value)
+    {
+    }
+
+    void* pvalue() override
+    {
+        std::cout << "pvalue() value: " << value_ << std::endl;
+        return &value_;
+    }
+
+    T value_;
+    size_t ind_;
 };
 
 namespace detail
 {
 
-template<size_t __pos, class parameter_info, class Tuple>
-struct json_tuple_helper
+template<size_t Pos, class parameter_binding, class Tuple>
+struct sql_parameters_tuple_helper
 {
-    using element_type = typename std::tuple_element<__pos - 1, Tuple>::type;
-    using next = json_tuple_helper<__pos - 1, parameter_info, Tuple>;
+    using element_type = typename std::tuple_element<Pos - 1, Tuple>::type;
+    using next = sql_parameters_tuple_helper<Pos - 1, parameter_binding, Tuple>;
 
-    static void to_json(const Tuple& tuple, std::array<parameter_info, std::tuple_size<Tuple>::value>& jsons)
+    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_binding>>& bindings)
     {
-        jsons[__pos - 1] = parameter_info(sql_type_traits<element_type>::sql_type_identifier(), sql_type_traits<element_type>::c_type_identifier());
-        next::to_json(tuple, jsons);
+        bindings[Pos - 1] = std::make_unique<parameter<typename sql_type_traits<element_type>::value_type>>(sql_type_traits<element_type>::sql_type_identifier(), sql_type_traits<element_type>::c_type_identifier(),std::get<Pos-1>(tuple));
+        next::to_parameters(tuple, bindings);
     }
 };
 
-template<class parameter_info, class Tuple>
-struct json_tuple_helper<0, parameter_info, Tuple>
+template<class parameter_binding, class Tuple>
+struct sql_parameters_tuple_helper<0, parameter_binding, Tuple>
 {
-    static void to_json(const Tuple& tuple, std::array<parameter_info, std::tuple_size<Tuple>::value>& json)
+    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_binding>>& json)
     {
     }
 };
@@ -190,20 +231,21 @@ public:
                  const std::function<void(const sql_record& record)>& callback,
                  std::error_code& ec)
     {
-        using helper = detail::json_tuple_helper<std::tuple_size<Tuple>::value, parameter_info, Tuple>;
+        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
         
         const size_t num_elements = std::tuple_size<Tuple>::value;
-        std::array<parameter_info,std::tuple_size<Tuple>::value> params;
-        helper::to_json(parameters, params);
+        std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
+        helper::to_parameters(parameters, params);
 
         std::cout << "Tuple size = " << num_elements << std::endl;
 
-        for (size_t i = 0; i < params.size(); ++i)
-        {
-            std::cout << "sql_type_identifier=" << params[i].sql_type_identifier_ << std::endl;
-        }
+        do_execute(params,callback,ec);
     }
 private:
+    void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings,
+        const std::function<void(const sql_record& record)>& callback,
+        std::error_code& ec);
+
     class impl;
     std::unique_ptr<impl> pimpl_;
 };
