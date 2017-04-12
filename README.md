@@ -1,5 +1,60 @@
 # sqlcons for C++
 
+## Query example
+
+```c++
+std::error_code ec;
+
+sql_connection connection;
+connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", ec);
+if (ec)
+{
+    std::cerr << ec.message() << std::endl;
+    return;
+}
+
+connection.execute("select instrument_id, observation_date, price from instrument_price",
+                   callback,
+                   ec);
+if (ec)
+{
+    std::cerr << ec.message() << std::endl;
+    return;
+}
+```
+
+## Prepared statement example
+
+```c++
+std::error_code ec;
+
+sql_connection connection;
+connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", ec);
+if (ec)
+{
+    std::cerr << ec.message() << std::endl;
+    return;
+}
+
+sql_prepared_statement statement;
+statement.prepare(connection,
+    "select instrument_id, observation_date, price from instrument_price where instrument_id = ?",
+    ec);
+if (ec)
+{
+    std::cerr << ec.message() << std::endl;
+    return;
+}
+
+auto parameters = std::make_tuple(1);
+statement.execute(parameters,callback,ec);
+if (ec)
+{
+    std::cerr << ec.message() << std::endl;
+    return;
+}
+```
+
 
 ## Resources
 

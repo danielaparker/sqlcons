@@ -63,42 +63,11 @@ class sqlcons_error_category_impl
    : public std::error_category
 {
 public:
-    virtual const char* name() const noexcept
+    const char* name() const noexcept override
     {
-        return "sqlcons error";
+        return "sqlcons.error";
     }
-    virtual std::string message(int ev) const
-    {
-        switch (static_cast<sql_errc>(ev))
-        {
-        case sql_errc::E_01000:
-            return "General warning";
-        case sql_errc::E_08S01:
-            return "Communication link failure";
-        case sql_errc::E_HY000:
-            return "General error";
-        case sql_errc::E_HY001:
-            return "Memory allocation error";
-        case sql_errc::E_HY008:
-            return "Operation canceled";
-        case sql_errc::E_HY010:
-            return "Function sequence error";
-        case sql_errc::E_HY013:
-            return "Memory management error";
-        case sql_errc::E_HY117:
-            return "Connection is suspended due to unknown transaction state";
-        case sql_errc::E_HYT01:
-            return "Connection timeout expired";
-        case sql_errc::E_IM001:
-            return "Driver does not support this function";
-        case sql_errc::E_IM017:
-            return "Polling is disabled in asynchronous notification mode";
-        case sql_errc::E_IM018:
-            return "SQLCompleteAsync has not been called to complete the previous asynchronous operation on this handle. If the previous function call on the handle returns SQL_STILL_EXECUTING and if notification mode is enabled, SQLCompleteAsync must be called on the handle to do post-processing and complete the operation";
-        default:
-            return "db error";
-        }
-    }
+    std::string message(int ev) const override;
 };
 
 const std::error_category& sqlcons_error_category();

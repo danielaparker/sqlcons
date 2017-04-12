@@ -18,10 +18,16 @@ const int sql_data_types::integer_id = SQL_INTEGER;
 
 const int sql_c_data_types::integer_id = SQL_C_SLONG;
 
+void process_results(SQLHSTMT hstmt,
+                     const std::function<void(const sql_record& record)>& callback,
+                     std::error_code& ec);
+
 void handle_diagnostic_record(SQLHANDLE hHandle,
                               SQLSMALLINT hType,
                               RETCODE RetCode,
                               std::error_code& ec);
+
+// sqlcons_error_category_impl
 
 const std::error_category& sqlcons_error_category()
 {
@@ -32,6 +38,39 @@ const std::error_category& sqlcons_error_category()
 std::error_code make_error_code(sql_errc result)
 {
     return std::error_code(static_cast<int>(result),sqlcons_error_category());
+}
+
+std::string sqlcons_error_category_impl::message(int ev) const
+{
+    switch (static_cast<sql_errc>(ev))
+    {
+    case sql_errc::E_01000:
+        return "General warning";
+    case sql_errc::E_08S01:
+        return "Communication link failure";
+    case sql_errc::E_HY000:
+        return "General error";
+    case sql_errc::E_HY001:
+        return "Memory allocation error";
+    case sql_errc::E_HY008:
+        return "Operation canceled";
+    case sql_errc::E_HY010:
+        return "Function sequence error";
+    case sql_errc::E_HY013:
+        return "Memory management error";
+    case sql_errc::E_HY117:
+        return "Connection is suspended due to unknown transaction state";
+    case sql_errc::E_HYT01:
+        return "Connection timeout expired";
+    case sql_errc::E_IM001:
+        return "Driver does not support this function";
+    case sql_errc::E_IM017:
+        return "Polling is disabled in asynchronous notification mode";
+    case sql_errc::E_IM018:
+        return "SQLCompleteAsync has not been called to complete the previous asynchronous operation on this handle. If the previous function call on the handle returns SQL_STILL_EXECUTING and if notification mode is enabled, SQLCompleteAsync must be called on the handle to do post-processing and complete the operation";
+    default:
+        return "db error";
+    }
 }
 
 // sql_column_impl
@@ -48,8 +87,8 @@ public:
     SQLSMALLINT nullable_;
 
     sql_data_type sql_data_type_;
-    long integerValue_;
-    std::vector<WCHAR> stringValue_;
+    long integer_value_;
+    std::vector<WCHAR> string_value_;
     double doubleValue_;
     SQLLEN length_or_null_;  // size or null
 
@@ -63,7 +102,7 @@ public:
           columnSize_(columnSize),
           decimalDigits_(decimalDigits),
           nullable_(nullable),
-          integerValue_(0),
+          integer_value_(0),
           doubleValue_(0.0),
           length_or_null_(0)
     {
@@ -86,7 +125,7 @@ public:
             else
             {
                 size_t len = length_or_null_/sizeof(wchar_t);
-                return std::wstring(stringValue_.data(), stringValue_.data() + len);
+                return std::wstring(string_value_.data(), string_value_.data() + len);
             }
             break;
         default:
@@ -107,7 +146,7 @@ public:
             {
                 size_t len = length_or_null_/sizeof(wchar_t);
                 std::string s;
-                auto result1 = unicons::convert(stringValue_.begin(),stringValue_.begin() + len,
+                auto result1 = unicons::convert(string_value_.begin(),string_value_.begin() + len,
                                                 std::back_inserter(s), 
                                                 unicons::conv_flags::strict);
                 return s;
@@ -123,7 +162,7 @@ public:
         switch (sql_data_type_)
         {
         case sql_data_type::integer_t:
-            return (double)integerValue_;
+            return (double)integer_value_;
             break;
         case sql_data_type::double_t:
             return doubleValue_;
@@ -138,7 +177,7 @@ public:
         switch (sql_data_type_)
         {
         case sql_data_type::integer_t:
-            return integerValue_;
+            return integer_value_;
             break;
         case sql_data_type::double_t:
             return (long)doubleValue_;
@@ -173,25 +212,25 @@ const sql_column& sql_record::operator[](size_t index) const
 class sql_connection::impl
 {
 public:
-    SQLHENV     hEnv_;
-    SQLHDBC     hDbc_; 
+    SQLHENV     henv_;
+    SQLHDBC     hdbc_; 
 
     impl()
-        : hEnv_(nullptr), hDbc_(nullptr)
+        : henv_(nullptr), hdbc_(nullptr)
     {
     }
 
     ~impl()
     {
-        if (hDbc_) 
+        if (hdbc_) 
         { 
-            SQLDisconnect(hDbc_); 
-            SQLFreeHandle(SQL_HANDLE_DBC, hDbc_); 
+            SQLDisconnect(hdbc_); 
+            SQLFreeHandle(SQL_HANDLE_DBC, hdbc_); 
         } 
 
-        if (hEnv_) 
+        if (henv_) 
         { 
-            SQLFreeHandle(SQL_HANDLE_ENV, hEnv_); 
+            SQLFreeHandle(SQL_HANDLE_ENV, henv_); 
         } 
     }
 
@@ -207,18 +246,18 @@ public:
 
 class sql_statement
 {
-    SQLHSTMT    hStmt_; 
+    SQLHSTMT    hstmt_; 
 public:
     sql_statement()
-        : hStmt_(nullptr)
+        : hstmt_(nullptr)
     {
     }
 
     ~sql_statement()
     {
-        if (hStmt_) 
+        if (hstmt_) 
         { 
-            SQLFreeHandle(SQL_HANDLE_STMT, hStmt_); 
+            SQLFreeHandle(SQL_HANDLE_STMT, hstmt_); 
         } 
     }
 
@@ -237,18 +276,18 @@ public:
 class sql_prepared_statement::impl
 {
 public:
-    SQLHSTMT hStmt_; 
+    SQLHSTMT hstmt_; 
 
     impl()
-        : hStmt_(nullptr)
+        : hstmt_(nullptr)
     {
     }
 
     ~impl()
     {
-        if (hStmt_) 
+        if (hstmt_) 
         { 
-            SQLFreeHandle(SQL_HANDLE_STMT, hStmt_); 
+            SQLFreeHandle(SQL_HANDLE_STMT, hstmt_); 
         } 
     }
 
@@ -267,35 +306,21 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
     long val = 1;
     SQLLEN ind = 0;
 
-    std::cout << "Num bindings: " << bindings.size() << std::endl;
     for (size_t i = 0; i < bindings.size(); ++i)
     {
-        std::cout << "c_type_identifier=" << bindings[i]->c_type_identifier_ << ", " << SQL_C_SLONG<< std::endl;
-        std::cout << "sql_type_identifier=" << bindings[i]->sql_type_identifier_ << ", " << SQL_INTEGER<< std::endl;
-        std::cout << "value=" << *(long*)(bindings[i]->pvalue()) << std::endl;
-        /*rc = SQLBindParameter(hStmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,  
-                              bindings[i]->pvalue(), 0, bindings[i]->pind());
-        if (rc == SQL_ERROR)
-        {
-            handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-            return;
-        }*/
-    }
-    for (size_t i = 0; i < bindings.size(); ++i)
-    {
-        rc = SQLBindParameter(hStmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
+        rc = SQLBindParameter(hstmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
                               bindings[i]->pvalue(), 0, &ind);
         if (rc == SQL_ERROR)
         {
-            handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
+            handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
             return;
         }
     }
 
-    rc = SQLExecute(hStmt_); 
+    rc = SQLExecute(hstmt_); 
     if (rc == SQL_ERROR)
     {
-        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
+        handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
     }
 
@@ -312,206 +337,7 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
         std::cout << "SQL_NEED_DATA" << std::endl;
     }
 
-    SQLSMALLINT numColumns; 
-    rc = SQLNumResultCols(hStmt_,&numColumns);
-    if (rc == SQL_ERROR)
-    {
-        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-        return;
-    }
-    std::cout << "numColumns = " << numColumns << std::endl;
-    std::vector<sql_column_impl> columns;
-    columns.reserve(numColumns);
-    if (numColumns > 0) 
-    { 
-        for (SQLUSMALLINT col = 1; col <= numColumns; col++) 
-        { 
-            SQLSMALLINT columnNameLength = 100;
-
-            // Figure out the length of the column name 
-            rc = SQLColAttribute(hStmt_, 
-                                 col, 
-                                 SQL_DESC_NAME, 
-                                 NULL, 
-                                 0, 
-                                 &columnNameLength, 
-                                 NULL); 
-            if (rc == SQL_ERROR)
-            {
-                handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                return;
-            }
-            columnNameLength /= sizeof(WCHAR);
-            std::vector<WCHAR> name(columnNameLength+1);
-
-            SQLSMALLINT nameLength;
-            SQLSMALLINT dataType;
-            SQLULEN columnSize;
-            SQLSMALLINT decimalDigits;
-            SQLSMALLINT nullable;
-            SQLDescribeCol(hStmt_,  
-                           col,  
-                           &name[0],  
-                           columnNameLength+1,  
-                           &nameLength,  
-                           &dataType,  
-                           &columnSize,  
-                           &decimalDigits,  
-                           &nullable);  
-
-            std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
-            columns.push_back(
-                sql_column_impl(std::wstring(&name[0],nameLength),
-                                dataType,
-                                columnSize,
-                                decimalDigits,
-                                nullable)
-            );
-            sql_data_type type;
-
-            switch (dataType)
-            {
-            case SQL_DATE:
-            case SQL_TYPE_DATE:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Date" << std::endl;
-                break;
-            case SQL_TYPE_TIME:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Time" << std::endl;
-                break;
-            case SQL_TYPE_TIMESTAMP:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "SQL_TYPE_TIMESTAMP" << std::endl;
-                break;
-            case SQL_SMALLINT:
-            case SQL_TINYINT:
-            case SQL_INTEGER:
-            case SQL_BIGINT:
-                type = sql_data_type::integer_t;
-                std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
-                break;
-            case SQL_WVARCHAR:
-            case SQL_VARCHAR:
-            case SQL_WCHAR:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
-                break;
-            case SQL_DECIMAL:
-            case SQL_NUMERIC:
-            case SQL_REAL:
-            case SQL_FLOAT:
-            case SQL_DOUBLE:
-                type = sql_data_type::double_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Float" << std::endl;
-                break;
-            default:
-                std::wcout << std::wstring(&name[0],nameLength) << " " << dataType << std::endl;
-                break;
-            }
-            switch (type)
-            {
-            case sql_data_type::string_t:
-                {
-                    RETCODE rc;
-                    SQLLEN cchDisplay; 
-
-                    rc = SQLColAttribute(hStmt_, 
-                                         col, 
-                                         SQL_DESC_DISPLAY_SIZE, 
-                                         NULL, 
-                                         0, 
-                                         NULL, 
-                                         &cchDisplay);
-                    if (rc == SQL_ERROR)
-                    {
-                        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                        return;
-                    }
-
-                    SQLLEN size = (cchDisplay + 1) * sizeof(WCHAR);
-                    columns.back().stringValue_.resize(size);
-                    rc = SQLBindCol(hStmt_, 
-                        col, 
-                        SQL_C_WCHAR, 
-                        (SQLPOINTER)&(columns.back().stringValue_[0]), 
-                        size, 
-                        &(columns.back().length_or_null_)); 
-                    if (rc == SQL_ERROR)
-                    {
-                        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                        return;
-                    }
-                }
-                break;
-            case sql_data_type::integer_t:
-                std::cout << "BIND TO INT" << std::endl;
-                rc = SQLBindCol(hStmt_,
-                    col, 
-                    SQL_C_ULONG,
-                    (SQLPOINTER)&(columns.back().integerValue_), 
-                    0, 
-                    &(columns.back().length_or_null_)); 
-                if (rc == SQL_ERROR)
-                {
-                    handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                    return;
-                }
-                break;
-            case sql_data_type::double_t:
-                rc = SQLBindCol(hStmt_, 
-                    col, 
-                    SQL_C_DOUBLE,
-                    (SQLPOINTER)&(columns.back().doubleValue_), 
-                    0, 
-                    &(columns.back().length_or_null_)); 
-                if (rc == SQL_ERROR)
-                {
-                    handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                    return;
-                }
-                break;
-            }
-            std::wcout << "column name:" << std::wstring(&name[0], nameLength) << ", length:" << columnNameLength << std::endl;
-
-            columns.back().sql_data_type_ = type;
-
-        }
-
-    }  
-    if (numColumns > 0) 
-    { 
-        bool fNoData = false; 
-
-        std::vector<sql_column*> cols;
-        cols.reserve(columns.size());
-        for (auto& c : columns)
-        {
-            cols.push_back(&c);
-        }
-
-        sql_record record(std::move(cols));
-
-        do { 
-            // Fetch a row 
-
-            rc = SQLFetch(hStmt_);
-            if (rc == SQL_ERROR)
-            {
-                ec = make_error_code(sql_errc::db_err);
-                return;
-            }
-            if (rc == SQL_NO_DATA_FOUND) 
-            { 
-                fNoData = true; 
-            } 
-            else 
-            { 
-                callback(record);
-            }
-
-        } while (!fNoData); 
-    }  
+    process_results(hstmt_, callback, ec);
 }
 
 void sql_prepared_statement::impl::prepare(SQLHDBC hDbc,
@@ -523,16 +349,16 @@ void sql_prepared_statement::impl::prepare(SQLHDBC hDbc,
                                     std::back_inserter(wquery), 
                                     unicons::conv_flags::strict);
 
-    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt_);
+    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hstmt_);
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hDbc, SQL_HANDLE_DBC, rc, ec);
         return;
     }
-    rc = SQLPrepare(hStmt_, &wquery[0], (SQLINTEGER)wquery.size()); 
+    rc = SQLPrepare(hstmt_, &wquery[0], (SQLINTEGER)wquery.size()); 
     if (rc == SQL_ERROR)
     {
-        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
+        handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
     }
 
@@ -546,7 +372,7 @@ sql_prepared_statement::~sql_prepared_statement() = default;
 
 void sql_prepared_statement::prepare(sql_connection& conn, const std::string& connString, std::error_code& ec)
 {
-    pimpl_->prepare(conn.pimpl_->hDbc_,connString, ec);
+    pimpl_->prepare(conn.pimpl_->hdbc_,connString, ec);
 }
 
 void sql_prepared_statement::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
@@ -563,21 +389,21 @@ void sql_connection::impl::execute(const std::string query,
                                    std::error_code& ec)
 {
     sql_statement q;
-    q.execute(hDbc_,query,callback,ec);
+    q.execute(hdbc_,query,callback,ec);
 }
 
 void sql_connection::impl::execute(const std::string query, 
                                    std::error_code& ec)
 {
     sql_statement q;
-    q.execute(hDbc_,query,ec);
+    q.execute(hdbc_,query,ec);
 }
 
 void sql_connection::impl::open(const std::string& connString, std::error_code& ec)
 {
     RETCODE rc = SQLAllocHandle(SQL_HANDLE_ENV, 
                                 SQL_NULL_HANDLE, 
-                                &hEnv_);
+                                &henv_);
     if (rc == SQL_ERROR)
     {
         ec = make_error_code(sql_errc::db_err);
@@ -598,26 +424,26 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
     // Register this as an application that expects 3.x behavior, 
     // you must register something if you use AllocHandle 
 
-    rc = SQLSetEnvAttr(hEnv_, 
+    rc = SQLSetEnvAttr(henv_, 
                        SQL_ATTR_ODBC_VERSION, 
                        (SQLPOINTER)SQL_OV_ODBC3, 
                        0);
     if (rc != SQL_SUCCESS)
     {
-        handle_diagnostic_record(hEnv_, SQL_HANDLE_ENV, rc, ec);
+        handle_diagnostic_record(henv_, SQL_HANDLE_ENV, rc, ec);
         return;
     }
 
-    rc = SQLAllocHandle(SQL_HANDLE_DBC, hEnv_, &hDbc_);
+    rc = SQLAllocHandle(SQL_HANDLE_DBC, henv_, &hdbc_);
     if (rc != SQL_SUCCESS)
     {
-        handle_diagnostic_record (hEnv_, SQL_HANDLE_ENV, rc, ec);
+        handle_diagnostic_record (henv_, SQL_HANDLE_ENV, rc, ec);
         return;
     }
 
     // Connect to the driver.  Use the sql_connection string if supplied 
     // on the input, otherwise let the driver manager prompt for input. 
-    rc = SQLDriverConnect(hDbc_, 
+    rc = SQLDriverConnect(hdbc_, 
                          NULL, 
                          &cs[0], 
                          (SQLSMALLINT)cs.size(), 
@@ -627,7 +453,7 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
                          SQL_DRIVER_NOPROMPT);
     if (rc == SQL_ERROR)
     {
-        handle_diagnostic_record (hDbc_, SQL_HANDLE_DBC, rc, ec);
+        handle_diagnostic_record (hdbc_, SQL_HANDLE_DBC, rc, ec);
         return;
     }
 }
@@ -667,220 +493,21 @@ void sql_statement::execute(SQLHDBC hDbc,
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
 
-    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt_);
+    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hstmt_);
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hDbc, SQL_HANDLE_DBC, rc, ec);
         return;
     }
 
-    rc = SQLExecDirect(hStmt_, &buf[0], (SQLINTEGER)buf.size()); 
+    rc = SQLExecDirect(hstmt_, &buf[0], (SQLINTEGER)buf.size()); 
     if (rc == SQL_ERROR)
     {
-        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
+        handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
     }
 
-    SQLSMALLINT numColumns; 
-    rc = SQLNumResultCols(hStmt_,&numColumns);
-    if (rc == SQL_ERROR)
-    {
-        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-        return;
-    }
-    std::cout << "numColumns = " << numColumns << std::endl;
-    std::vector<sql_column_impl> columns;
-    columns.reserve(numColumns);
-    if (numColumns > 0) 
-    { 
-        for (SQLUSMALLINT col = 1; col <= numColumns; col++) 
-        { 
-            SQLSMALLINT columnNameLength = 100;
-
-            // Figure out the length of the column name 
-            rc = SQLColAttribute(hStmt_, 
-                                 col, 
-                                 SQL_DESC_NAME, 
-                                 NULL, 
-                                 0, 
-                                 &columnNameLength, 
-                                 NULL); 
-            if (rc == SQL_ERROR)
-            {
-                handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                return;
-            }
-            columnNameLength /= sizeof(WCHAR);
-            std::vector<WCHAR> name(columnNameLength+1);
-
-            SQLSMALLINT nameLength;
-            SQLSMALLINT dataType;
-            SQLULEN columnSize;
-            SQLSMALLINT decimalDigits;
-            SQLSMALLINT nullable;
-            SQLDescribeCol(hStmt_,  
-                           col,  
-                           &name[0],  
-                           columnNameLength+1,  
-                           &nameLength,  
-                           &dataType,  
-                           &columnSize,  
-                           &decimalDigits,  
-                           &nullable);  
-
-            std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
-            columns.push_back(
-                sql_column_impl(std::wstring(&name[0],nameLength),
-                                dataType,
-                                columnSize,
-                                decimalDigits,
-                                nullable)
-            );
-            sql_data_type type;
-
-            switch (dataType)
-            {
-            case SQL_DATE:
-            case SQL_TYPE_DATE:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Date" << std::endl;
-                break;
-            case SQL_TYPE_TIME:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Time" << std::endl;
-                break;
-            case SQL_TYPE_TIMESTAMP:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "SQL_TYPE_TIMESTAMP" << std::endl;
-                break;
-            case SQL_SMALLINT:
-            case SQL_TINYINT:
-            case SQL_INTEGER:
-            case SQL_BIGINT:
-                type = sql_data_type::integer_t;
-                std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
-                break;
-            case SQL_WVARCHAR:
-            case SQL_VARCHAR:
-            case SQL_WCHAR:
-                type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
-                break;
-            case SQL_DECIMAL:
-            case SQL_NUMERIC:
-            case SQL_REAL:
-            case SQL_FLOAT:
-            case SQL_DOUBLE:
-                type = sql_data_type::double_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Float" << std::endl;
-                break;
-            default:
-                std::wcout << std::wstring(&name[0],nameLength) << " " << dataType << std::endl;
-                break;
-            }
-            switch (type)
-            {
-            case sql_data_type::string_t:
-                {
-                    RETCODE rc;
-                    SQLLEN cchDisplay; 
-
-                    rc = SQLColAttribute(hStmt_, 
-                                         col, 
-                                         SQL_DESC_DISPLAY_SIZE, 
-                                         NULL, 
-                                         0, 
-                                         NULL, 
-                                         &cchDisplay);
-                    if (rc == SQL_ERROR)
-                    {
-                        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                        return;
-                    }
-
-                    SQLLEN size = (cchDisplay + 1) * sizeof(WCHAR);
-                    columns.back().stringValue_.resize(size);
-                    rc = SQLBindCol(hStmt_, 
-                        col, 
-                        SQL_C_WCHAR, 
-                        (SQLPOINTER)&(columns.back().stringValue_[0]), 
-                        size, 
-                        &(columns.back().length_or_null_)); 
-                    if (rc == SQL_ERROR)
-                    {
-                        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                        return;
-                    }
-                }
-                break;
-            case sql_data_type::integer_t:
-                std::cout << "BIND TO INT" << std::endl;
-                rc = SQLBindCol(hStmt_,
-                    col, 
-                    SQL_C_ULONG,
-                    (SQLPOINTER)&(columns.back().integerValue_), 
-                    0, 
-                    &(columns.back().length_or_null_)); 
-                if (rc == SQL_ERROR)
-                {
-                    handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                    return;
-                }
-                break;
-            case sql_data_type::double_t:
-                rc = SQLBindCol(hStmt_, 
-                    col, 
-                    SQL_C_DOUBLE,
-                    (SQLPOINTER)&(columns.back().doubleValue_), 
-                    0, 
-                    &(columns.back().length_or_null_)); 
-                if (rc == SQL_ERROR)
-                {
-                    handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
-                    return;
-                }
-                break;
-            }
-            std::wcout << "column name:" << std::wstring(&name[0], nameLength) << ", length:" << columnNameLength << std::endl;
-
-            columns.back().sql_data_type_ = type;
-
-        }
-
-    }  
-    if (numColumns > 0) 
-    { 
-        bool fNoData = false; 
-
-        std::vector<sql_column*> cols;
-        cols.reserve(columns.size());
-        for (auto& c : columns)
-        {
-            cols.push_back(&c);
-        }
-
-        sql_record record(std::move(cols));
-
-        do { 
-            // Fetch a row 
-
-            rc = SQLFetch(hStmt_);
-            if (rc == SQL_ERROR)
-            {
-                ec = make_error_code(sql_errc::db_err);
-                return;
-            }
-            if (rc == SQL_NO_DATA_FOUND) 
-            { 
-                fNoData = true; 
-            } 
-            else 
-            { 
-                callback(record);
-            }
-
-        } while (!fNoData); 
-    }  
+    process_results(hstmt_, callback, ec);
 }
 
 void sql_statement::execute(SQLHDBC hDbc, 
@@ -892,17 +519,17 @@ void sql_statement::execute(SQLHDBC hDbc,
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
 
-    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt_);
+    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hstmt_);
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hDbc, SQL_HANDLE_DBC, rc, ec);
         return;
     }
 
-    rc = SQLExecDirect(hStmt_, &buf[0], (SQLINTEGER)buf.size()); 
+    rc = SQLExecDirect(hstmt_, &buf[0], (SQLINTEGER)buf.size()); 
     if (rc == SQL_ERROR)
     {
-        handle_diagnostic_record(hStmt_, SQL_HANDLE_STMT, rc, ec);
+        handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
     }
 }
@@ -984,5 +611,213 @@ void handle_diagnostic_record (SQLHANDLE      hHandle,
         }
     } 
 } 
+
+void process_results(SQLHSTMT hstmt,
+                     const std::function<void(const sql_record& record)>& callback,
+                     std::error_code& ec)
+{
+    RETCODE rc;
+
+    SQLSMALLINT numColumns; 
+    rc = SQLNumResultCols(hstmt,&numColumns);
+    if (rc == SQL_ERROR)
+    {
+        handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+        return;
+    }
+    std::cout << "numColumns = " << numColumns << std::endl;
+    std::vector<sql_column_impl> columns;
+    columns.reserve(numColumns);
+    if (numColumns > 0) 
+    { 
+        for (SQLUSMALLINT col = 1; col <= numColumns; col++) 
+        { 
+            SQLSMALLINT columnNameLength = 100;
+
+            // Figure out the length of the column name 
+            rc = SQLColAttribute(hstmt, 
+                                 col, 
+                                 SQL_DESC_NAME, 
+                                 NULL, 
+                                 0, 
+                                 &columnNameLength, 
+                                 NULL); 
+            if (rc == SQL_ERROR)
+            {
+                handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+                return;
+            }
+            columnNameLength /= sizeof(WCHAR);
+            std::vector<WCHAR> name(columnNameLength+1);
+
+            SQLSMALLINT nameLength;
+            SQLSMALLINT dataType;
+            SQLULEN columnSize;
+            SQLSMALLINT decimalDigits;
+            SQLSMALLINT nullable;
+            SQLDescribeCol(hstmt,  
+                           col,  
+                           &name[0],  
+                           columnNameLength+1,  
+                           &nameLength,  
+                           &dataType,  
+                           &columnSize,  
+                           &decimalDigits,  
+                           &nullable);  
+
+            std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
+            columns.push_back(
+                sql_column_impl(std::wstring(&name[0],nameLength),
+                                dataType,
+                                columnSize,
+                                decimalDigits,
+                                nullable)
+            );
+            sql_data_type type;
+
+            switch (dataType)
+            {
+            case SQL_DATE:
+            case SQL_TYPE_DATE:
+                type = sql_data_type::string_t;
+                std::wcout << std::wstring(&name[0],nameLength) << " " << "Date" << std::endl;
+                break;
+            case SQL_TYPE_TIME:
+                type = sql_data_type::string_t;
+                std::wcout << std::wstring(&name[0],nameLength) << " " << "Time" << std::endl;
+                break;
+            case SQL_TYPE_TIMESTAMP:
+                type = sql_data_type::string_t;
+                std::wcout << std::wstring(&name[0],nameLength) << " " << "SQL_TYPE_TIMESTAMP" << std::endl;
+                break;
+            case SQL_SMALLINT:
+            case SQL_TINYINT:
+            case SQL_INTEGER:
+            case SQL_BIGINT:
+                type = sql_data_type::integer_t;
+                std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
+                break;
+            case SQL_WVARCHAR:
+            case SQL_VARCHAR:
+            case SQL_WCHAR:
+                type = sql_data_type::string_t;
+                std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
+                break;
+            case SQL_DECIMAL:
+            case SQL_NUMERIC:
+            case SQL_REAL:
+            case SQL_FLOAT:
+            case SQL_DOUBLE:
+                type = sql_data_type::double_t;
+                std::wcout << std::wstring(&name[0],nameLength) << " " << "Float" << std::endl;
+                break;
+            default:
+                std::wcout << std::wstring(&name[0],nameLength) << " " << dataType << std::endl;
+                break;
+            }
+            switch (type)
+            {
+            case sql_data_type::string_t:
+                {
+                    RETCODE rc;
+                    SQLLEN cchDisplay; 
+
+                    rc = SQLColAttribute(hstmt, 
+                                         col, 
+                                         SQL_DESC_DISPLAY_SIZE, 
+                                         NULL, 
+                                         0, 
+                                         NULL, 
+                                         &cchDisplay);
+                    if (rc == SQL_ERROR)
+                    {
+                        handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+                        return;
+                    }
+
+                    SQLLEN size = (cchDisplay + 1) * sizeof(WCHAR);
+                    columns.back().string_value_.resize(size);
+                    rc = SQLBindCol(hstmt, 
+                        col, 
+                        SQL_C_WCHAR, 
+                        (SQLPOINTER)&(columns.back().string_value_[0]), 
+                        size, 
+                        &(columns.back().length_or_null_)); 
+                    if (rc == SQL_ERROR)
+                    {
+                        handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+                        return;
+                    }
+                }
+                break;
+            case sql_data_type::integer_t:
+                std::cout << "BIND TO INT" << std::endl;
+                rc = SQLBindCol(hstmt,
+                    col, 
+                    SQL_C_ULONG,
+                    (SQLPOINTER)&(columns.back().integer_value_), 
+                    0, 
+                    &(columns.back().length_or_null_)); 
+                if (rc == SQL_ERROR)
+                {
+                    handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+                    return;
+                }
+                break;
+            case sql_data_type::double_t:
+                rc = SQLBindCol(hstmt, 
+                    col, 
+                    SQL_C_DOUBLE,
+                    (SQLPOINTER)&(columns.back().doubleValue_), 
+                    0, 
+                    &(columns.back().length_or_null_)); 
+                if (rc == SQL_ERROR)
+                {
+                    handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+                    return;
+                }
+                break;
+            }
+            std::wcout << "column name:" << std::wstring(&name[0], nameLength) << ", length:" << columnNameLength << std::endl;
+
+            columns.back().sql_data_type_ = type;
+
+        }
+
+    }  
+    if (numColumns > 0) 
+    { 
+        bool fNoData = false; 
+
+        std::vector<sql_column*> cols;
+        cols.reserve(columns.size());
+        for (auto& c : columns)
+        {
+            cols.push_back(&c);
+        }
+
+        sql_record record(std::move(cols));
+
+        do { 
+            // Fetch a row 
+
+            rc = SQLFetch(hstmt);
+            if (rc == SQL_ERROR)
+            {
+                ec = make_error_code(sql_errc::db_err);
+                return;
+            }
+            if (rc == SQL_NO_DATA_FOUND) 
+            { 
+                fNoData = true; 
+            } 
+            else 
+            { 
+                callback(record);
+            }
+
+        } while (!fNoData); 
+    }  
+}
 
 }
