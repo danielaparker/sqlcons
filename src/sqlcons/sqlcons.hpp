@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <array>
+#include <iostream>
 
 namespace sqlcons {
 
@@ -19,11 +20,13 @@ struct sql_type_traits
 struct sql_data_types
 {
     static const int integer_id;
+    static const int string_id;
 };
 
 struct sql_c_data_types
 {
     static const int integer_id;
+    static const int string_id;
 };
 
 // integral
@@ -38,6 +41,16 @@ struct sql_type_traits<T,
     typedef int64_t value_type;
     static int sql_type_identifier() { return sql_data_types::integer_id; }
     static int c_type_identifier() { return sql_c_data_types::integer_id; }
+};
+
+// std::string
+
+template <>
+struct sql_type_traits<std::string>
+{
+    typedef std::string value_type;
+    static int sql_type_identifier() { return sql_data_types::string_id; }
+    static int c_type_identifier() { return sql_c_data_types::string_id; }
 };
 
 // conv_errc
@@ -133,7 +146,7 @@ private:
     std::unique_ptr<impl> pimpl_;
 };
 
-// sql_prepared_statement
+// parameter_binding
 
 struct parameter_binding
 {
@@ -149,6 +162,10 @@ struct parameter_binding
     }
     virtual void* pvalue() = 0;
 
+    virtual size_t column_size() const = 0;
+
+    virtual size_t buffer_length() const = 0;
+
     int parameter_type() const
     {
         return sql_type_identifier_;
@@ -157,11 +174,6 @@ struct parameter_binding
     int value_type() const
     {
         return c_type_identifier_;
-    }
-
-    size_t column_size() const
-    {
-        return 0;
     }
 
     int64_t* pind() 
@@ -178,17 +190,53 @@ template <class T>
 struct parameter : public parameter_binding
 {
     parameter(int sql_type_identifier,int c_type_identifier, const T& value)
-        : parameter_binding(sql_type_identifier, c_type_identifier), value_(value)
+        : parameter_binding(sql_type_identifier, c_type_identifier), 
+          value_(value), ind_(0)
     {
     }
 
     void* pvalue() override
     {
-        std::cout << "pvalue() value: " << value_ << std::endl;
+        //std::cout << "pvalue() value: " << value_ << std::endl;
         return &value_;
     }
 
+    size_t column_size() const override
+    {
+        return 0;
+    }
+
+    size_t buffer_length() const override
+    {
+        return 0;
+    }
+
     T value_;
+    size_t ind_;
+};
+
+template <>
+struct parameter<std::string> : public parameter_binding
+{
+    parameter(int sql_type_identifier,int c_type_identifier, const std::string& value);
+
+    void* pvalue() override
+    {
+        //std::cout << "pvalue() value: " << value_ << std::endl;
+        return &value_[0];
+    }
+
+    size_t column_size() const override
+    {
+        return value_.size();
+    }
+
+    size_t buffer_length() const override
+    {
+        return (value_.size()-1)*sizeof(wchar_t);
+    }
+
+    std::vector<wchar_t> value_;
     size_t ind_;
 };
 
@@ -203,7 +251,9 @@ struct sql_parameters_tuple_helper
 
     static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_binding>>& bindings)
     {
-        bindings[Pos - 1] = std::make_unique<parameter<typename sql_type_traits<element_type>::value_type>>(sql_type_traits<element_type>::sql_type_identifier(), sql_type_traits<element_type>::c_type_identifier(),std::get<Pos-1>(tuple));
+        bindings[Pos - 1] = std::make_unique<parameter<typename sql_type_traits<element_type>::value_type>>(sql_type_traits<element_type>::sql_type_identifier(), 
+                                                                                                            sql_type_traits<element_type>::c_type_identifier(),
+                                                                                                            std::get<Pos-1>(tuple));
         next::to_parameters(tuple, bindings);
     }
 };

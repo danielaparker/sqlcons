@@ -15,8 +15,20 @@
 namespace sqlcons {
 
 const int sql_data_types::integer_id = SQL_INTEGER;
+const int sql_data_types::string_id = SQL_WVARCHAR;
 
 const int sql_c_data_types::integer_id = SQL_C_SLONG;
+const int sql_c_data_types::string_id = SQL_C_WCHAR;
+
+parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier, const std::string& value)
+    : parameter_binding(sql_type_identifier, c_type_identifier)
+{
+    auto result1 = unicons::convert(value.begin(),value.end(),
+                                    std::back_inserter(value_), 
+                                    unicons::conv_flags::strict);
+    ind_ = value_.size();
+    value_.push_back(0);
+}
 
 void process_results(SQLHSTMT hstmt,
                      const std::function<void(const sql_record& record)>& callback,
@@ -75,7 +87,7 @@ std::string sqlcons_error_category_impl::message(int ev) const
 
 // sql_column_impl
 
-enum class sql_data_type {string_t,integer_t,double_t};
+enum class sql_data_type {wstring_t,string_t,integer_t,double_t};
 
 class sql_column_impl : public sql_column
 {
@@ -88,7 +100,8 @@ public:
 
     sql_data_type sql_data_type_;
     long integer_value_;
-    std::vector<WCHAR> string_value_;
+    std::vector<WCHAR> wstring_value_;
+    std::vector<CHAR> string_value_;
     double doubleValue_;
     SQLLEN length_or_null_;  // size or null
 
@@ -117,7 +130,7 @@ public:
     {
         switch (sql_data_type_)
         {
-        case sql_data_type::string_t:
+        case sql_data_type::wstring_t:
             if (is_null())
             {
                 return L"";
@@ -125,7 +138,22 @@ public:
             else
             {
                 size_t len = length_or_null_/sizeof(wchar_t);
-                return std::wstring(string_value_.data(), string_value_.data() + len);
+                return std::wstring(wstring_value_.data(), wstring_value_.data() + len);
+            }
+            break;
+        case sql_data_type::string_t:
+            if (is_null())
+            {
+                return L"";
+            }
+            else
+            {
+                size_t len = length_or_null_;
+                std::wstring s;
+                auto result1 = unicons::convert(string_value_.begin(),string_value_.begin() + len,
+                                                std::back_inserter(s), 
+                                                unicons::conv_flags::strict);
+                return s;
             }
             break;
         default:
@@ -137,7 +165,7 @@ public:
     {
         switch (sql_data_type_)
         {
-        case sql_data_type::string_t:
+        case sql_data_type::wstring_t:
             if (is_null())
             {
                 return "";
@@ -146,10 +174,21 @@ public:
             {
                 size_t len = length_or_null_/sizeof(wchar_t);
                 std::string s;
-                auto result1 = unicons::convert(string_value_.begin(),string_value_.begin() + len,
+                auto result1 = unicons::convert(wstring_value_.begin(),wstring_value_.begin() + len,
                                                 std::back_inserter(s), 
                                                 unicons::conv_flags::strict);
                 return s;
+            }
+            break;
+        case sql_data_type::string_t:
+            if (is_null())
+            {
+                return "";
+            }
+            else
+            {
+                size_t len = length_or_null_;
+                return std::string(string_value_.data(), string_value_.data() + len);
             }
             break;
         default:
@@ -304,12 +343,13 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
 {
     RETCODE rc;
     long val = 1;
-    SQLLEN ind = 0;
+    SQLLEN ind = 4;
 
     for (size_t i = 0; i < bindings.size(); ++i)
     {
+        std::cout << "column_size: " << bindings[i]->column_size() << std::endl;
         rc = SQLBindParameter(hstmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
-                              bindings[i]->pvalue(), 0, &ind);
+                              bindings[i]->pvalue(), bindings[i]->buffer_length(), &ind);
         if (rc == SQL_ERROR)
         {
             handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
@@ -697,10 +737,14 @@ void process_results(SQLHSTMT hstmt,
                 type = sql_data_type::integer_t;
                 std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
                 break;
-            case SQL_WVARCHAR:
             case SQL_VARCHAR:
-            case SQL_WCHAR:
+            case SQL_CHAR:
                 type = sql_data_type::string_t;
+                std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
+                break;
+            case SQL_WVARCHAR:
+            case SQL_WCHAR:
+                type = sql_data_type::wstring_t;
                 std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
                 break;
             case SQL_DECIMAL:
@@ -735,12 +779,45 @@ void process_results(SQLHSTMT hstmt,
                         return;
                     }
 
-                    SQLLEN size = (cchDisplay + 1) * sizeof(WCHAR);
+                    SQLLEN size = cchDisplay + 1;
                     columns.back().string_value_.resize(size);
                     rc = SQLBindCol(hstmt, 
                         col, 
-                        SQL_C_WCHAR, 
+                        SQL_C_CHAR, 
                         (SQLPOINTER)&(columns.back().string_value_[0]), 
+                        size, 
+                        &(columns.back().length_or_null_)); 
+                    if (rc == SQL_ERROR)
+                    {
+                        handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+                        return;
+                    }
+                }
+                break;
+            case sql_data_type::wstring_t:
+                {
+                    RETCODE rc;
+                    SQLLEN cchDisplay; 
+
+                    rc = SQLColAttribute(hstmt, 
+                                         col, 
+                                         SQL_DESC_DISPLAY_SIZE, 
+                                         NULL, 
+                                         0, 
+                                         NULL, 
+                                         &cchDisplay);
+                    if (rc == SQL_ERROR)
+                    {
+                        handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+                        return;
+                    }
+
+                    SQLLEN size = (cchDisplay + 1) * sizeof(WCHAR);
+                    columns.back().wstring_value_.resize(size);
+                    rc = SQLBindCol(hstmt, 
+                        col, 
+                        SQL_C_WCHAR, 
+                        (SQLPOINTER)&(columns.back().wstring_value_[0]), 
                         size, 
                         &(columns.back().length_or_null_)); 
                     if (rc == SQL_ERROR)

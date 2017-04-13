@@ -23,7 +23,7 @@ void callback(const sql_record& record)
               << record[2].as_double()  
               << std::endl;
 }
-
+/*
 TEST_CASE("odbc_tests") 
 {
     std::error_code ec;
@@ -77,4 +77,45 @@ TEST_CASE("sql_prepared_statement")
     }
 
 } 
+*/
+
+TEST_CASE("sql_prepared_statement_with_string_param") 
+{
+    std::error_code ec;
+
+    sql_connection connection;
+    connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    sql_prepared_statement statement;
+    statement.prepare(connection,
+        "select instrument_id, contract_date from futures_contract where product_id = ?",
+        ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    auto f = [](const sql_record& record)
+    {
+        std::cout << record[0].as_long() << " " 
+                  << record[1].as_string() << " " 
+                  << std::endl;
+    };
+
+    auto parameters = std::make_tuple(std::string("HO"));
+    statement.execute(parameters,f,ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+} 
+
 
