@@ -15,15 +15,6 @@
 
 using namespace sqlcons;
 
-void callback(const sql_record& record)
-{
-    const sql_column& column = record[0];
-    std::cout << record[0].as_long() << " " 
-              << record[1].as_string() << " " 
-              << record[2].as_double()  
-              << std::endl;
-}
-/*
 TEST_CASE("odbc_tests") 
 {
     std::error_code ec;
@@ -36,8 +27,17 @@ TEST_CASE("odbc_tests")
         return;
     }
 
+    auto action = [](const sql_record& record)
+    {
+        const sql_column& column = record[0];
+        std::cout << record[0].as_long() << " " 
+                  << record[1].as_string() << " " 
+                  << record[2].as_double()  
+                  << std::endl;
+    };
+
     connection.execute("select instrument_id, observation_date, price from instrument_price",
-                       callback,
+                       action,
                        ec);
     if (ec)
     {
@@ -68,8 +68,17 @@ TEST_CASE("sql_prepared_statement")
         return;
     }
 
+    auto action = [](const sql_record& record)
+    {
+        const sql_column& column = record[0];
+        std::cout << record[0].as_long() << " " 
+                  << record[1].as_string() << " " 
+                  << record[2].as_double()  
+                  << std::endl;
+    };
+
     auto parameters = std::make_tuple(1);
-    statement.execute(parameters,callback,ec);
+    statement.execute(parameters, action, ec);
     if (ec)
     {
         std::cerr << ec.message() << std::endl;
@@ -77,7 +86,6 @@ TEST_CASE("sql_prepared_statement")
     }
 
 } 
-*/
 
 TEST_CASE("sql_prepared_statement_with_string_param") 
 {
@@ -101,7 +109,7 @@ TEST_CASE("sql_prepared_statement_with_string_param")
         return;
     }
 
-    auto f = [](const sql_record& record)
+    auto action = [](const sql_record& record)
     {
         std::cout << record[0].as_long() << " " 
                   << record[1].as_string() << " " 
@@ -109,7 +117,7 @@ TEST_CASE("sql_prepared_statement_with_string_param")
     };
 
     auto parameters = std::make_tuple(std::string("HO"));
-    statement.execute(parameters,f,ec);
+    statement.execute(parameters, action, ec);
     if (ec)
     {
         std::cerr << ec.message() << std::endl;

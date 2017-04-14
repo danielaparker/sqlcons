@@ -164,6 +164,8 @@ struct parameter_binding
 
     virtual size_t column_size() const = 0;
 
+    virtual size_t buffer_capacity() const = 0;
+
     virtual size_t buffer_length() const = 0;
 
     int parameter_type() const
@@ -206,6 +208,11 @@ struct parameter : public parameter_binding
         return 0;
     }
 
+    size_t buffer_capacity() const override
+    {
+        return 0;
+    }
+
     size_t buffer_length() const override
     {
         return 0;
@@ -231,6 +238,11 @@ struct parameter<std::string> : public parameter_binding
         return value_.size();
     }
 
+    size_t buffer_capacity() const override
+    {
+        return (value_.size()-1)*sizeof(wchar_t);
+    }
+
     size_t buffer_length() const override
     {
         return (value_.size()-1)*sizeof(wchar_t);
@@ -251,7 +263,7 @@ struct sql_parameters_tuple_helper
 
     static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_binding>>& bindings)
     {
-        bindings[Pos - 1] = std::make_unique<parameter<typename sql_type_traits<element_type>::value_type>>(sql_type_traits<element_type>::sql_type_identifier(), 
+        bindings[Pos - 1] = std::make_unique<parameter<element_type>>(sql_type_traits<element_type>::sql_type_identifier(), 
                                                                                                             sql_type_traits<element_type>::c_type_identifier(),
                                                                                                             std::get<Pos-1>(tuple));
         next::to_parameters(tuple, bindings);

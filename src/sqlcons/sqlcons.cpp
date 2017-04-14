@@ -342,14 +342,15 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
                                               std::error_code& ec)
 {
     RETCODE rc;
-    long val = 1;
-    SQLLEN ind = 4;
+
+    std::vector<SQLLEN> lengths(bindings.size());
 
     for (size_t i = 0; i < bindings.size(); ++i)
     {
+        lengths[i] = bindings[i]->buffer_length();
         std::cout << "column_size: " << bindings[i]->column_size() << std::endl;
         rc = SQLBindParameter(hstmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
-                              bindings[i]->pvalue(), bindings[i]->buffer_length(), &ind);
+                              bindings[i]->pvalue(), bindings[i]->buffer_capacity(), &lengths[i]);
         if (rc == SQL_ERROR)
         {
             handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
