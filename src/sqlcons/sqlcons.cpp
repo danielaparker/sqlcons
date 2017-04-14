@@ -57,29 +57,75 @@ std::string sqlcons_error_category_impl::message(int ev) const
     switch (static_cast<sql_errc>(ev))
     {
     case sql_errc::E_01000:
-        return "General warning";
+        return "[01000] General warning";
+    case sql_errc::E_01001:
+        return "[01001] Cursor operation conflict";
+    case sql_errc::E_01003:
+        return "[01003] Cursor operation conflict";
+    case sql_errc::E_07002:
+        return "[07002] COUNT field incorrect";
+    case sql_errc::E_07006:
+        return "[07006] Restricted data type attribute violation";
+    case sql_errc::E_07007:
+        return "[07007] Restricted parameter value violation";
+    case sql_errc::E_07S01:
+        return "[07S01] Invalid use of default parameter";
     case sql_errc::E_08S01:
-        return "Communication link failure";
+        return "[08S01] Communication link failure";
+    case sql_errc::E_21S02:
+        return "[21S02] Degree of derived table does not match column list";
+    case sql_errc::E_22001:
+        return "[22001] String data, right truncation";
+    case sql_errc::E_22002:
+        return "[22002] Indicator variable required but not supplied";
+    case sql_errc::E_22003:
+        return "[22003] Numeric value out of range";
+    case sql_errc::E_22007:
+        return "[22007] Invalid datetime format";
+    case sql_errc::E_22008:
+        return "Datetime field overflow";
+    case sql_errc::E_22012:
+        return "[22012] Division by zero";
+    case sql_errc::E_22015:
+        return "[22015] Interval field overflow";
+    case sql_errc::E_22018:
+        return "[22018] Interval field overflowInvalid character value for cast specification";
+    case sql_errc::E_22019:
+        return "[22019] Invalid escape character";
+    case sql_errc::E_22025:
+        return "[22025] Invalid escape sequence";
+    case sql_errc::E_23000:
+        return "[23000] Integrity constraint violation";
+    case sql_errc::E_24000:
+        return "[24000] Invalid cursor state";
+    case sql_errc::E_40001:
+        return "[40001] Serialization failure";
+    case sql_errc::E_40003:
+        return "[40003] Statement completion unknown";
+    case sql_errc::E_42000:
+        return "[42000] Syntax error or access violation";
+    case sql_errc::E_44000:
+        return "[44000] WITH CHECK OPTION violation";
     case sql_errc::E_HY000:
-        return "General error";
+        return "[HY000] General error";
     case sql_errc::E_HY001:
-        return "Memory allocation error";
+        return "[HY001] Memory allocation error";
     case sql_errc::E_HY008:
-        return "Operation canceled";
+        return "[HY008] Operation canceled";
     case sql_errc::E_HY010:
-        return "Function sequence error";
+        return "[HY010] Function sequence error";
     case sql_errc::E_HY013:
-        return "Memory management error";
+        return "[HY013] Memory management error";
     case sql_errc::E_HY117:
-        return "Connection is suspended due to unknown transaction state";
+        return "[HY117] Connection is suspended due to unknown transaction state";
     case sql_errc::E_HYT01:
-        return "Connection timeout expired";
+        return "[HYT01] Connection timeout expired";
     case sql_errc::E_IM001:
-        return "Driver does not support this function";
+        return "[IM001] Driver does not support this function";
     case sql_errc::E_IM017:
-        return "Polling is disabled in asynchronous notification mode";
+        return "[IM017] Polling is disabled in asynchronous notification mode";
     case sql_errc::E_IM018:
-        return "SQLCompleteAsync has not been called to complete the previous asynchronous operation on this handle. If the previous function call on the handle returns SQL_STILL_EXECUTING and if notification mode is enabled, SQLCompleteAsync must be called on the handle to do post-processing and complete the operation";
+        return "[IM018] SQLCompleteAsync has not been called to complete the previous asynchronous operation on this handle. If the previous function call on the handle returns SQL_STILL_EXECUTING and if notification mode is enabled, SQLCompleteAsync must be called on the handle to do post-processing and complete the operation";
     default:
         return "db error";
     }
@@ -625,23 +671,56 @@ void sql_statement::execute(SQLHDBC hDbc,
     }
 }
 
+struct compare_states
+{
+    bool operator()(const wchar_t* key1, const wchar_t* key2) const
+    {
+        return wcsncmp(key1, key2, 5) < 0;
+    }
+};
+
 struct odbc_error_codes
 {
-    std::map<const wchar_t*,sql_errc> code_map;
+    std::map<const wchar_t*,sql_errc,compare_states> code_map;
 
     odbc_error_codes()
     {
         code_map[L"01000"] = sql_errc::E_01000;
+        code_map[L"01001"] = sql_errc::E_01001;
+        code_map[L"01003"] = sql_errc::E_01003;
+        code_map[L"07002"] = sql_errc::E_07002;
+        code_map[L"07006"] = sql_errc::E_07006;
+        code_map[L"07007"] = sql_errc::E_07007;
+        code_map[L"07S01"] = sql_errc::E_07S01;
         code_map[L"08S01"] = sql_errc::E_08S01;
+        code_map[L"21S02"] = sql_errc::E_21S02;
+        code_map[L"22001"] = sql_errc::E_22001;
+        code_map[L"22002"] = sql_errc::E_22002;
+        code_map[L"22003"] = sql_errc::E_22003;
+        code_map[L"22007"] = sql_errc::E_22007;
+        code_map[L"22008"] = sql_errc::E_22008;
+        code_map[L"22012"] = sql_errc::E_22012;
+        code_map[L"22015"] = sql_errc::E_22015;
+        code_map[L"22018"] = sql_errc::E_22018;
+        code_map[L"22019"] = sql_errc::E_22019;
+        code_map[L"22025"] = sql_errc::E_22025;
+        code_map[L"23000"] = sql_errc::E_23000;
+        code_map[L"24000"] = sql_errc::E_24000;
+        code_map[L"40001"] = sql_errc::E_40001;
+        code_map[L"40003"] = sql_errc::E_40003;
+        code_map[L"42000"] = sql_errc::E_42000;
+        code_map[L"44000"] = sql_errc::E_44000;
         code_map[L"HY000"] = sql_errc::E_HY000;
         code_map[L"HY001"] = sql_errc::E_HY001;
         code_map[L"HY008"] = sql_errc::E_HY008;
+        code_map[L"HY010"] = sql_errc::E_HY010;
         code_map[L"HY013"] = sql_errc::E_HY013;
         code_map[L"HY117"] = sql_errc::E_HY117;
         code_map[L"HYT01"] = sql_errc::E_HYT01;
         code_map[L"IM001"] = sql_errc::E_IM001;
         code_map[L"IM017"] = sql_errc::E_IM017;
         code_map[L"IM018"] = sql_errc::E_IM018;
+
     }
 
     std::error_code get_error_code(const wchar_t* state)
@@ -661,7 +740,7 @@ struct odbc_error_codes
 /*      RetCode     Return code of failing command 
 /************************************************************************/ 
  
-void handle_diagnostic_record (SQLHANDLE      hHandle,     
+void handle_diagnostic_record(SQLHANDLE      hHandle,     
                               SQLSMALLINT    hType,   
                               RETCODE        RetCode,
                               std::error_code& ec) 
@@ -691,12 +770,13 @@ void handle_diagnostic_record (SQLHANDLE      hHandle,
                          (SQLSMALLINT *)NULL) == SQL_SUCCESS) 
     { 
         // Hide data truncated.. 
-        if (wcsncmp(wszState, L"01004", 5)) 
+        if (!wcsncmp(wszState, L"01004", 5)) 
         { 
-            fwprintf(stderr, L"[%5.5s] %s (%d)\n", wszState, wszMessage, iError); 
+            //fwprintf(stderr, L"[%5.5s] %s (%d)\n", wszState, wszMessage, iError); 
         }
         else
         {
+            //fwprintf(stderr, L"[%5.5s] %s (%d)\n", wszState, wszMessage, iError); 
             ec = error_codes.get_error_code(wszState);
             break;
         }
