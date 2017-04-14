@@ -335,6 +335,9 @@ public:
     void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
                     const std::function<void(const sql_record& record)>& callback,
                     std::error_code& ec);
+
+    void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                    std::error_code& ec);
 };
 
 void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
@@ -381,6 +384,47 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
     process_results(hstmt_, callback, ec);
 }
 
+void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                                              std::error_code& ec)
+{
+    RETCODE rc;
+
+    std::vector<SQLLEN> lengths(bindings.size());
+
+    for (size_t i = 0; i < bindings.size(); ++i)
+    {
+        lengths[i] = bindings[i]->buffer_length();
+        std::cout << "column_size: " << bindings[i]->column_size() << std::endl;
+        rc = SQLBindParameter(hstmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
+                              bindings[i]->pvalue(), bindings[i]->buffer_capacity(), &lengths[i]);
+        if (rc == SQL_ERROR)
+        {
+            handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
+            return;
+        }
+    }
+
+    rc = SQLExecute(hstmt_); 
+    if (rc == SQL_ERROR)
+    {
+        handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
+        return;
+    }
+
+    if (rc == SQL_PARAM_DATA_AVAILABLE)
+    {
+        std::cout << "SQL_PARAM_DATA_AVAILABLE" << std::endl;
+    }
+    if (rc == NO_DATA)
+    {
+        std::cout << "NO_DATA" << std::endl;
+    }
+    if (rc == SQL_NEED_DATA)
+    {
+        std::cout << "SQL_NEED_DATA" << std::endl;
+    }
+}
+
 void sql_prepared_statement::impl::prepare(SQLHDBC hDbc,
                                            const std::string& query,
                                            std::error_code& ec)
@@ -421,6 +465,12 @@ void sql_prepared_statement::do_execute(std::vector<std::unique_ptr<parameter_bi
                                         std::error_code& ec)
 {
     pimpl_->do_execute(bindings, callback, ec);
+}
+
+void sql_prepared_statement::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                                        std::error_code& ec)
+{
+    pimpl_->do_execute(bindings, ec);
 }
 
 // sql_connection::impl

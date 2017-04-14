@@ -126,4 +126,35 @@ TEST_CASE("sql_prepared_statement_with_string_param")
 
 } 
 
+TEST_CASE("Prepared insert statement") 
+{
+    std::error_code ec;
+
+    sql_connection connection;
+    connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    sql_prepared_statement statement;
+    statement.prepare(connection,
+        "INSERT INTO futures_contract(product_id,contract_date) VALUES(?,?)",
+        ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    auto parameters = std::make_tuple<std::string,std::string>("HO","2017-03-31");
+    statement.execute(parameters,ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+} 
+
 

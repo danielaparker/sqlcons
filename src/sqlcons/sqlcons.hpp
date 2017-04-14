@@ -305,9 +305,26 @@ public:
 
         do_execute(params,callback,ec);
     }
+
+    template <typename Tuple>
+    void execute(const Tuple& parameters,
+                 std::error_code& ec)
+    {
+        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
+
+        const size_t num_elements = std::tuple_size<Tuple>::value;
+        std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
+        helper::to_parameters(parameters, params);
+
+        std::cout << "Tuple size = " << num_elements << std::endl;
+
+        do_execute(params,ec);
+    }
 private:
     void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings,
         const std::function<void(const sql_record& record)>& callback,
+        std::error_code& ec);
+    void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings,
         std::error_code& ec);
 
     class impl;
