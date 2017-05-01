@@ -53,6 +53,14 @@ struct sql_type_traits<std::string>
     static int c_type_identifier() { return sql_c_data_types::string_id; }
 };
 
+template <>
+struct sql_type_traits<const char*>
+{
+    typedef std::string value_type;
+    static int sql_type_identifier() { return sql_data_types::string_id; }
+    static int c_type_identifier() { return sql_c_data_types::string_id; }
+};
+
 // conv_errc
 
 enum class sql_errc 
@@ -92,7 +100,8 @@ enum class sql_errc
     E_HYT01,
     E_IM001,
     E_IM017,
-    E_IM018
+    E_IM018,
+    E_42S22
 };
 
 class sqlcons_error_category_impl
@@ -324,7 +333,7 @@ public:
         std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
         helper::to_parameters(parameters, params);
 
-        std::cout << "Tuple size = " << num_elements << std::endl;
+        //std::cout << "Tuple size = " << num_elements << std::endl;
 
         do_execute(params,callback,ec);
     }
@@ -339,7 +348,7 @@ public:
         std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
         helper::to_parameters(parameters, params);
 
-        std::cout << "Tuple size = " << num_elements << std::endl;
+        //std::cout << "Tuple size = " << num_elements << std::endl;
 
         do_execute(params,ec);
     }

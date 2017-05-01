@@ -11,6 +11,7 @@
 #include <iostream>
 #include <sqlcons/unicode_traits.hpp>
 #include <vector>
+#include  <sstream>
 
 namespace sqlcons {
 
@@ -126,6 +127,8 @@ std::string sqlcons_error_category_impl::message(int ev) const
         return "[IM017] Polling is disabled in asynchronous notification mode";
     case sql_errc::E_IM018:
         return "[IM018] SQLCompleteAsync has not been called to complete the previous asynchronous operation on this handle. If the previous function call on the handle returns SQL_STILL_EXECUTING and if notification mode is enabled, SQLCompleteAsync must be called on the handle to do post-processing and complete the operation";
+    case sql_errc::E_42S22:
+        return "[E_42S22] Column not found";
     default:
         return "db error";
     }
@@ -248,12 +251,26 @@ public:
         {
         case sql_data_type::integer_t:
             return (double)integer_value_;
-            break;
         case sql_data_type::double_t:
             return doubleValue_;
-            break;
+        case sql_data_type::string_t:
+            {
+                size_t len = length_or_null_;
+                std::istringstream is(std::string(string_value_.data(), string_value_.data() + len));
+                double d;
+                is >> d;
+                return d;
+            }
+        case sql_data_type::wstring_t:
+            {
+                size_t len = length_or_null_;
+                std::wistringstream is(std::wstring(wstring_value_.data(), wstring_value_.data() + len));
+                double d;
+                is >> d;
+                return d;
+            }
         default:
-            return 99;
+            return 0;
         }
     }
 
@@ -397,7 +414,7 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
     for (size_t i = 0; i < bindings.size(); ++i)
     {
         lengths[i] = bindings[i]->buffer_length();
-        std::cout << "column_size: " << bindings[i]->column_size() << std::endl;
+        //std::cout << "column_size: " << bindings[i]->column_size() << std::endl;
         rc = SQLBindParameter(hstmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
                               bindings[i]->pvalue(), bindings[i]->buffer_capacity(), &lengths[i]);
         if (rc == SQL_ERROR)
@@ -440,7 +457,7 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
     for (size_t i = 0; i < bindings.size(); ++i)
     {
         lengths[i] = bindings[i]->buffer_length();
-        std::cout << "column_size: " << bindings[i]->column_size() << std::endl;
+        //std::cout << "column_size: " << bindings[i]->column_size() << std::endl;
         rc = SQLBindParameter(hstmt_, i+1, SQL_PARAM_INPUT, bindings[i]->value_type(), bindings[i]->parameter_type(), bindings[i]->column_size(), 0,
                               bindings[i]->pvalue(), bindings[i]->buffer_capacity(), &lengths[i]);
         if (rc == SQL_ERROR)
@@ -459,7 +476,7 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
 
     if (rc == SQL_PARAM_DATA_AVAILABLE)
     {
-        std::cout << "SQL_PARAM_DATA_AVAILABLE" << std::endl;
+        //std::cout << "SQL_PARAM_DATA_AVAILABLE" << std::endl;
     }
     if (rc == NO_DATA)
     {
@@ -551,7 +568,7 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
     auto result1 = unicons::convert(connString.begin(),connString.end(),
                                     std::back_inserter(cs), 
                                     unicons::conv_flags::strict);
-    std::cout << connString << std::endl;
+    //std::cout << connString << std::endl;
     std::wcout << cs << std::endl;
 
     WCHAR* pwszConnStr = L"Driver={SQL Server};Server=localhost;Database=master;Trusted_Connection=Yes;"; 
@@ -720,7 +737,7 @@ struct odbc_error_codes
         code_map[L"IM001"] = sql_errc::E_IM001;
         code_map[L"IM017"] = sql_errc::E_IM017;
         code_map[L"IM018"] = sql_errc::E_IM018;
-
+        code_map[L"42S22"] = sql_errc::E_42S22;
     }
 
     std::error_code get_error_code(const wchar_t* state)
@@ -796,7 +813,7 @@ void process_results(SQLHSTMT hstmt,
         handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
         return;
     }
-    std::cout << "numColumns = " << numColumns << std::endl;
+    //std::cout << "numColumns = " << numColumns << std::endl;
     std::vector<sql_column_impl> columns;
     columns.reserve(numColumns);
     if (numColumns > 0) 
@@ -959,7 +976,7 @@ void process_results(SQLHSTMT hstmt,
                 }
                 break;
             case sql_data_type::integer_t:
-                std::cout << "BIND TO INT" << std::endl;
+                //std::cout << "BIND TO INT" << std::endl;
                 rc = SQLBindCol(hstmt,
                     col, 
                     SQL_C_ULONG,
