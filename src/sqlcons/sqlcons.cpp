@@ -1032,17 +1032,19 @@ void process_results(SQLHSTMT hstmt,
                 ec = make_error_code(sql_errc::db_err);
                 return;
             }
-            if (rc == SQL_NO_DATA_FOUND) 
+            if (rc == SQL_SUCCESS) 
             { 
-                fNoData = true; 
+                callback(record);
             } 
             else 
             { 
-                callback(record);
+                fNoData = true; 
             }
 
-        } while (!fNoData); 
-    }  
+        } 
+        while (!fNoData); 
+        rc = SQLCloseCursor(hstmt);
+    }
 }
 
 }
