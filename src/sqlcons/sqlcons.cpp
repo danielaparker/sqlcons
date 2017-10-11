@@ -2,7 +2,6 @@
 #include <windows.h> 
 //#include <sql.h> 
 
-#define UNICODE  
 #include <sqlext.h> 
 #include <stdio.h> 
 #include <conio.h> 
@@ -23,10 +22,10 @@ const int sql_c_data_types::smallint_id = SQL_C_SSHORT;
 const int sql_c_data_types::integer_id = SQL_C_SLONG;
 const int sql_c_data_types::string_id = SQL_C_WCHAR;
 
-parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier, const std::string& value)
+parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier, const std::string& val)
     : parameter_binding(sql_type_identifier, c_type_identifier)
 {
-    auto result1 = unicons::convert(value.begin(),value.end(),
+    auto result1 = unicons::convert(val.begin(),val.end(),
                                     std::back_inserter(value_), 
                                     unicons::conv_flags::strict);
     ind_ = value_.size();
@@ -35,12 +34,12 @@ parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier,
     //std::cout << "parameter<std::string> "
     //          << "sql_type_identifier: " << sql_type_identifier
     //          << ", c_type_identifier: " << c_type_identifier
-    //          << ", value: " << value
+    //          << ", val: " << val
     //          << std::endl;
 }
 
 void process_results(SQLHSTMT hstmt,
-                     const std::function<void(const record& rec)>& callback,
+                     const std::function<void(const row& rec)>& callback,
                      std::error_code& ec);
 
 void handle_diagnostic_record(SQLHANDLE hHandle,
@@ -84,7 +83,7 @@ std::string sqlcons_error_category_impl::message(int ev) const
     case sql_errc::E_08S01:
         return "[08S01] Communication link failure";
     case sql_errc::E_21S02:
-        return "[21S02] Degree of derived table does not match column list";
+        return "[21S02] Degree of derived table does not match data_value list";
     case sql_errc::E_22001:
         return "[22001] String data, right truncation";
     case sql_errc::E_22002:
@@ -160,7 +159,7 @@ std::string sqlcons_error_category_impl::message(int ev) const
 
 enum class sql_data_type {wstring_t,string_t,integer_t,double_t};
 
-class sql_column_impl : public record_column
+class sql_column_impl : public data_value
 {
 public:
     std::wstring name_;
@@ -312,23 +311,23 @@ public:
     }
 };
 
-// record
+// row
 
-record::record(std::vector<record_column*>&& columns)
-    : columns_(std::move(columns))
+row::row(std::vector<data_value*>&& values)
+    : values_(std::move(values))
 {
 }
 
-record::~record() = default;
+row::~row() = default;
 
-size_t record::size() const
+size_t row::size() const
 {
-    return columns_.size();
+    return values_.size();
 }
 
-const record_column& record::operator[](size_t index) const
+const data_value& row::operator[](size_t index) const
 {
-    return *columns_[index];
+    return *values_[index];
 }
 
 // connection::impl
@@ -362,9 +361,9 @@ public:
 
     void open(const std::string& connString, bool autoCommit, std::error_code& ec);
 
-    void auto_commit(bool value, std::error_code& ec);
+    void auto_commit(bool val, std::error_code& ec);
 
-    void connection_timeout(size_t value, std::error_code& ec);
+    void connection_timeout(size_t val, std::error_code& ec);
 
     prepared_statement prepare_statement(const std::string& query, std::error_code& ec);
 
@@ -375,7 +374,7 @@ public:
     void execute(const std::string& query, 
                  std::error_code& ec);
     void execute(const std::string& query, 
-                 const std::function<void(const record& rec)>& callback,
+                 const std::function<void(const row& rec)>& callback,
                  std::error_code& ec);
 };
 
@@ -455,7 +454,7 @@ public:
 
     void execute(SQLHDBC hDbc, 
                  const std::string& query, 
-                 const std::function<void(const record& rec)>& callback,
+                 const std::function<void(const row& rec)>& callback,
                  std::error_code& ec);
 };
 
@@ -489,7 +488,7 @@ public:
     }
 
     void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
-                    const std::function<void(const record& rec)>& callback,
+                    const std::function<void(const row& rec)>& callback,
                     std::error_code& ec);
 
     void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
@@ -500,7 +499,7 @@ public:
 };
 
 void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
-                                          const std::function<void(const record& rec)>& callback,
+                                          const std::function<void(const row& rec)>& callback,
                                           std::error_code& ec)
 {
     RETCODE rc;
@@ -604,7 +603,7 @@ prepared_statement::prepared_statement(std::unique_ptr<prepared_statement::impl>
 prepared_statement::~prepared_statement() = default;
 
 void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
-                                        const std::function<void(const record& rec)>& callback,
+                                        const std::function<void(const row& rec)>& callback,
                                         std::error_code& ec)
 {
     pimpl_->execute_(bindings, callback, ec);
@@ -624,9 +623,9 @@ void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>
 
 // connection::impl
 
-void connection::impl::auto_commit(bool value, std::error_code& ec)
+void connection::impl::auto_commit(bool val, std::error_code& ec)
 {
-    autoCommit_ = value;
+    autoCommit_ = val;
 
     RETCODE rc;
     if (autoCommit_)
@@ -649,13 +648,13 @@ void connection::impl::auto_commit(bool value, std::error_code& ec)
     }
 }
 
-void connection::impl::connection_timeout(size_t value, std::error_code& ec)
+void connection::impl::connection_timeout(size_t val, std::error_code& ec)
 {
     RETCODE rc;
 
     rc = SQLSetConnectAttr(hdbc_, 
                        SQL_ATTR_CONNECTION_TIMEOUT, 
-                       (SQLPOINTER)value, 
+                       (SQLPOINTER)val, 
                        0);
     if (rc != SQL_SUCCESS)
     {
@@ -664,7 +663,7 @@ void connection::impl::connection_timeout(size_t value, std::error_code& ec)
 }
 
 void connection::impl::execute(const std::string& query, 
-                               const std::function<void(const record& rec)>& callback,
+                               const std::function<void(const row& rec)>& callback,
                                std::error_code& ec)
 {
     statement q;
@@ -827,14 +826,14 @@ void connection::open(const std::string& connString, bool autoCommit, std::error
     pimpl_->open(connString, autoCommit, ec);
 }
 
-void connection::auto_commit(bool value, std::error_code& ec)
+void connection::auto_commit(bool val, std::error_code& ec)
 {
-    pimpl_->auto_commit(value, ec);
+    pimpl_->auto_commit(val, ec);
 }
 
-void connection::connection_timeout(size_t value, std::error_code& ec)
+void connection::connection_timeout(size_t val, std::error_code& ec)
 {
-    pimpl_->connection_timeout(value, ec);
+    pimpl_->connection_timeout(val, ec);
 }
 
 prepared_statement connection::prepare_statement(const std::string& query, std::error_code& ec)
@@ -854,7 +853,7 @@ void connection::execute(const std::string& query,
 }
 
 void connection::execute(const std::string& query, 
-                         const std::function<void(const record& rec)>& callback,
+                         const std::function<void(const row& rec)>& callback,
                          std::error_code& ec)
 {
     pimpl_->execute(query, callback, ec);
@@ -863,7 +862,7 @@ void connection::execute(const std::string& query,
 
 void statement::execute(SQLHDBC hDbc, 
                         const std::string& query, 
-                        const std::function<void(const record& rec)>& callback,
+                        const std::function<void(const row& rec)>& callback,
                         std::error_code& ec)
 {
     std::wstring buf;
@@ -1032,7 +1031,7 @@ void handle_diagnostic_record(SQLHANDLE      hHandle,
 } 
 
 void process_results(SQLHSTMT hstmt,
-                     const std::function<void(const record& rec)>& callback,
+                     const std::function<void(const row& rec)>& callback,
                      std::error_code& ec)
 {
     RETCODE rc;
@@ -1045,15 +1044,15 @@ void process_results(SQLHSTMT hstmt,
         return;
     }
     //std::cout << "numColumns = " << numColumns << std::endl;
-    std::vector<sql_column_impl> columns;
-    columns.reserve(numColumns);
+    std::vector<sql_column_impl> values;
+    values.reserve(numColumns);
     if (numColumns > 0) 
     { 
         for (SQLUSMALLINT col = 1; col <= numColumns; col++) 
         { 
             SQLSMALLINT columnNameLength = 100;
 
-            // Figure out the length of the column name 
+            // Figure out the length of the data_value name 
             rc = SQLColAttribute(hstmt, 
                                  col, 
                                  SQL_DESC_NAME, 
@@ -1085,7 +1084,7 @@ void process_results(SQLHSTMT hstmt,
                            &nullable);  
 
             std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
-            columns.push_back(
+            values.push_back(
                 sql_column_impl(std::wstring(&name[0],nameLength),
                                 dataType,
                                 columnSize,
@@ -1160,13 +1159,13 @@ void process_results(SQLHSTMT hstmt,
                     }
 
                     SQLLEN size = cchDisplay + 1;
-                    columns.back().string_value_.resize(size);
+                    values.back().string_value_.resize(size);
                     rc = SQLBindCol(hstmt, 
                         col, 
                         SQL_C_CHAR, 
-                        (SQLPOINTER)&(columns.back().string_value_[0]), 
+                        (SQLPOINTER)&(values.back().string_value_[0]), 
                         size, 
-                        &(columns.back().length_or_null_)); 
+                        &(values.back().length_or_null_)); 
                     if (rc == SQL_ERROR)
                     {
                         handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
@@ -1193,13 +1192,13 @@ void process_results(SQLHSTMT hstmt,
                     }
 
                     SQLLEN size = (cchDisplay + 1) * sizeof(WCHAR);
-                    columns.back().wstring_value_.resize(size);
+                    values.back().wstring_value_.resize(size);
                     rc = SQLBindCol(hstmt, 
                         col, 
                         SQL_C_WCHAR, 
-                        (SQLPOINTER)&(columns.back().wstring_value_[0]), 
+                        (SQLPOINTER)&(values.back().wstring_value_[0]), 
                         size, 
-                        &(columns.back().length_or_null_)); 
+                        &(values.back().length_or_null_)); 
                     if (rc == SQL_ERROR)
                     {
                         handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
@@ -1212,9 +1211,9 @@ void process_results(SQLHSTMT hstmt,
                 rc = SQLBindCol(hstmt,
                     col, 
                     SQL_C_ULONG,
-                    (SQLPOINTER)&(columns.back().integer_value_), 
+                    (SQLPOINTER)&(values.back().integer_value_), 
                     0, 
-                    &(columns.back().length_or_null_)); 
+                    &(values.back().length_or_null_)); 
                 if (rc == SQL_ERROR)
                 {
                     handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
@@ -1225,9 +1224,9 @@ void process_results(SQLHSTMT hstmt,
                 rc = SQLBindCol(hstmt, 
                     col, 
                     SQL_C_DOUBLE,
-                    (SQLPOINTER)&(columns.back().doubleValue_), 
+                    (SQLPOINTER)&(values.back().doubleValue_), 
                     0, 
-                    &(columns.back().length_or_null_)); 
+                    &(values.back().length_or_null_)); 
                 if (rc == SQL_ERROR)
                 {
                     handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
@@ -1235,9 +1234,9 @@ void process_results(SQLHSTMT hstmt,
                 }
                 break;
             }
-            std::wcout << "column name:" << std::wstring(&name[0], nameLength) << ", length:" << columnNameLength << std::endl;
+            std::wcout << "data_value name:" << std::wstring(&name[0], nameLength) << ", length:" << columnNameLength << std::endl;
 
-            columns.back().sql_data_type_ = type;
+            values.back().sql_data_type_ = type;
 
         }
 
@@ -1246,14 +1245,14 @@ void process_results(SQLHSTMT hstmt,
     { 
         bool fNoData = false; 
 
-        std::vector<record_column*> cols;
-        cols.reserve(columns.size());
-        for (auto& c : columns)
+        std::vector<data_value*> cols;
+        cols.reserve(values.size());
+        for (auto& c : values)
         {
             cols.push_back(&c);
         }
 
-        record rec(std::move(cols));
+        row rec(std::move(cols));
 
         do { 
             // Fetch a row 

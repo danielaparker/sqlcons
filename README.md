@@ -13,12 +13,12 @@ if (ec)
     return;
 }
 
-auto action = [](const sqlcons::record& record)
+auto action = [](const sqlcons::row& row)
 {
-    const record_column& column = record[0];
-    std::cout << record[0].as_long() << " " 
-              << record[1].as_string() << " " 
-              << record[2].as_double()  
+    const sqlcons::data_value& value = row[0];
+    std::cout << row[0].as_long() << " " 
+              << row[1].as_string() << " " 
+              << row[2].as_double()  
               << std::endl;
 };
 
@@ -54,12 +54,12 @@ if (ec)
     return;
 }
 
-auto action = [](const sqlcons::record& record)
+auto action = [](const sqlcons::row& row)
 {
-    const record_column& column = record[0];
-    std::cout << record[0].as_long() << " " 
-              << record[1].as_string() << " " 
-              << record[2].as_double()  
+    const sqlcons::data_value& value = row[0];
+    std::cout << row[0].as_long() << " " 
+              << row[1].as_string() << " " 
+              << row[2].as_double()  
               << std::endl;
 };
 
@@ -94,10 +94,10 @@ if (ec)
     return;
 }
 
-auto action = [](const sqlcons::record& record)
+auto action = [](const sqlcons::row& row)
 {
-    std::cout << record[0].as_long() << " " 
-              << record[1].as_string() << " " 
+    std::cout << row[0].as_long() << " " 
+              << row[1].as_string() << " " 
               << std::endl;
 };
 

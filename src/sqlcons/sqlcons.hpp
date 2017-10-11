@@ -150,12 +150,12 @@ std::error_code make_error_code(sql_errc result);
 template <class Tuple>
 using query_callback = std::function<void(const Tuple&)>;
 
-// record_column
+// data_value
 
-class record_column
+class data_value
 {
 public:
-    virtual ~record_column() = default;
+    virtual ~data_value() = default;
 
     virtual std::string as_string() const = 0;
 
@@ -166,21 +166,21 @@ public:
     virtual long as_long() const = 0;
 };
 
-// record
+// row
 
-class record
+class row
 {
 public:
-    record(std::vector<record_column*>&& columns);
+    row(std::vector<data_value*>&& values);
 
-    ~record();
+    ~row();
 
     size_t size() const;
 
-    const record_column& operator[](size_t index) const;
+    const data_value& operator[](size_t index) const;
 private:
-    std::vector<record_column*> columns_;
-    std::map<std::string,record_column*> column_map_;
+    std::vector<data_value*> values_;
+    std::map<std::string,data_value*> column_map_;
 };
 
 // parameter_binding
@@ -228,20 +228,20 @@ struct parameter_binding
 template <class T>
 struct parameter : public parameter_binding
 {
-    parameter(int sql_type_identifier,int c_type_identifier, const T& value)
+    parameter(int sql_type_identifier,int c_type_identifier, const T& val)
         : parameter_binding(sql_type_identifier, c_type_identifier), 
-          value_(value), ind_(0)
+          value_(val), ind_(0)
     {
         //std::cout << "sql_type_identifier: " << sql_type_identifier
         //          << ", c_type_identifier: " << c_type_identifier
         //          << ", sizeof(T): " << sizeof(T)
-        //          << ", value: " << value
+        //          << ", val: " << val
         //          << std::endl;
     }
 
     void* pvalue() override
     {
-        //std::cout << "pvalue() value: " << value_ << std::endl;
+        //std::cout << "pvalue() val: " << value_ << std::endl;
         return &value_;
     }
 
@@ -267,11 +267,11 @@ struct parameter : public parameter_binding
 template <>
 struct parameter<std::string> : public parameter_binding
 {
-    parameter(int sql_type_identifier,int c_type_identifier, const std::string& value);
+    parameter(int sql_type_identifier,int c_type_identifier, const std::string& val);
 
     void* pvalue() override
     {
-        //std::cout << "pvalue() value: " << value_ << std::endl;
+        //std::cout << "pvalue() val: " << value_ << std::endl;
         return &value_[0];
     }
 
@@ -354,7 +354,7 @@ public:
 
     template <typename Tuple>
     void execute(const Tuple& parameters,
-                 const std::function<void(const record& rec)>& callback,
+                 const std::function<void(const row& rec)>& callback,
                  std::error_code& ec)
     {
         using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
@@ -390,7 +390,7 @@ public:
     }
 private:
     void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
-        const std::function<void(const record& rec)>& callback,
+        const std::function<void(const row& rec)>& callback,
         std::error_code& ec);
     void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
         std::error_code& ec);
@@ -414,9 +414,9 @@ public:
 
     void open(const std::string& connString, bool autoCommit, std::error_code& ec);
 
-    void auto_commit(bool value, std::error_code& ec);
+    void auto_commit(bool val, std::error_code& ec);
 
-    void connection_timeout(size_t value, std::error_code& ec);
+    void connection_timeout(size_t val, std::error_code& ec);
 
     prepared_statement prepare_statement(const std::string& query, transaction& trans);
 
@@ -430,7 +430,7 @@ public:
                  std::error_code& ec);
 
     void execute(const std::string& query, 
-                 const std::function<void(const record& rec)>& callback,
+                 const std::function<void(const row& rec)>& callback,
                  std::error_code& ec);
 private:
     class impl;
