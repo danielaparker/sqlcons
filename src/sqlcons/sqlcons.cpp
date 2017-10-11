@@ -155,11 +155,11 @@ std::string sqlcons_error_category_impl::message(int ev) const
     }
 }
 
-// sql_column_impl
+// data_value_impl
 
 enum class sql_data_type {wstring_t,string_t,integer_t,double_t};
 
-class sql_column_impl : public data_value
+class data_value_impl : public data_value
 {
 public:
     std::wstring name_;
@@ -175,7 +175,7 @@ public:
     double doubleValue_;
     SQLLEN length_or_null_;  // size or null
 
-    sql_column_impl(std::wstring&& name,
+    data_value_impl(std::wstring&& name,
                     SQLSMALLINT dataType,
                     SQLULEN columnSize,
                     SQLSMALLINT decimalDigits,
@@ -1044,7 +1044,7 @@ void process_results(SQLHSTMT hstmt,
         return;
     }
     //std::cout << "numColumns = " << numColumns << std::endl;
-    std::vector<sql_column_impl> values;
+    std::vector<data_value_impl> values;
     values.reserve(numColumns);
     if (numColumns > 0) 
     { 
@@ -1085,7 +1085,7 @@ void process_results(SQLHSTMT hstmt,
 
             std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
             values.push_back(
-                sql_column_impl(std::wstring(&name[0],nameLength),
+                data_value_impl(std::wstring(&name[0],nameLength),
                                 dataType,
                                 columnSize,
                                 decimalDigits,
