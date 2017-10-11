@@ -12,6 +12,10 @@
 
 namespace sqlcons {
 
+// Forward
+
+class connection;
+
 template <class T, class Enable=void>
 struct sql_type_traits
 {
@@ -19,12 +23,14 @@ struct sql_type_traits
 
 struct sql_data_types
 {
+    static const int smallint_id;
     static const int integer_id;
     static const int string_id;
 };
 
 struct sql_c_data_types
 {
+    static const int smallint_id;
     static const int integer_id;
     static const int string_id;
 };
@@ -35,6 +41,20 @@ template<class T>
 struct sql_type_traits<T,
                        typename std::enable_if<std::is_integral<T>::value &&
                        std::is_signed<T>::value &&
+                       sizeof(T) == sizeof(int16_t) &&
+                       !std::is_same<T,bool>::value
+>::type>
+{
+    typedef int16_t value_type;
+    static int sql_type_identifier() { return sql_data_types::smallint_id; }
+    static int c_type_identifier() { return sql_c_data_types::smallint_id; }
+};
+
+template<class T>
+struct sql_type_traits<T,
+                       typename std::enable_if<std::is_integral<T>::value &&
+                       std::is_signed<T>::value &&
+                       sizeof(T) == sizeof(int32_t) &&
                        !std::is_same<T,bool>::value
 >::type>
 {
@@ -67,6 +87,7 @@ enum class sql_errc
 {
     db_err = 1,
     E_01000,
+    E_01S02,
     E_01001,
     E_01003,
     E_07002,
@@ -94,10 +115,16 @@ enum class sql_errc
     E_HY000,
     E_HY001,
     E_HY008,
+    E_HY009,
     E_HY010,
     E_HY013,
+    E_HY024,
+    E_HY090,
+    E_HY092,
+    E_HY104,
     E_HY117,
     E_HYT01,
+    E_HYC00,
     E_IM001,
     E_IM017,
     E_IM018,
@@ -123,12 +150,12 @@ std::error_code make_error_code(sql_errc result);
 template <class Tuple>
 using query_callback = std::function<void(const Tuple&)>;
 
-// sql_column
+// record_column
 
-class sql_column
+class record_column
 {
 public:
-    virtual ~sql_column() = default;
+    virtual ~record_column() = default;
 
     virtual std::string as_string() const = 0;
 
@@ -139,43 +166,21 @@ public:
     virtual long as_long() const = 0;
 };
 
-// sql_record
+// record
 
-class sql_record
+class record
 {
 public:
-    sql_record(std::vector<sql_column*>&& columns);
+    record(std::vector<record_column*>&& columns);
 
-    ~sql_record();
+    ~record();
 
     size_t size() const;
 
-    const sql_column& operator[](size_t index) const;
+    const record_column& operator[](size_t index) const;
 private:
-    std::vector<sql_column*> columns_;
-    std::map<std::string,sql_column*> column_map_;
-};
-
-// sql_connection
-
-class sql_connection
-{
-public:
-    friend class sql_statement;
-    friend class sql_prepared_statement;
-
-    sql_connection();
-    ~sql_connection();
-
-    void open(const std::string& connString, std::error_code& ec);
-    void execute(const std::string query, 
-                 std::error_code& ec);
-    void execute(const std::string query, 
-                 const std::function<void(const sql_record& record)>& callback,
-                 std::error_code& ec);
-private:
-    class impl;
-    std::unique_ptr<impl> pimpl_;
+    std::vector<record_column*> columns_;
+    std::map<std::string,record_column*> column_map_;
 };
 
 // parameter_binding
@@ -227,6 +232,11 @@ struct parameter : public parameter_binding
         : parameter_binding(sql_type_identifier, c_type_identifier), 
           value_(value), ind_(0)
     {
+        //std::cout << "sql_type_identifier: " << sql_type_identifier
+        //          << ", c_type_identifier: " << c_type_identifier
+        //          << ", sizeof(T): " << sizeof(T)
+        //          << ", value: " << value
+        //          << std::endl;
     }
 
     void* pvalue() override
@@ -284,6 +294,24 @@ struct parameter<std::string> : public parameter_binding
     size_t ind_;
 };
 
+// transaction
+
+class transaction
+{
+public:
+    transaction(connection& conn);
+    ~transaction();
+
+    std::error_code error_code() const;
+
+    void update_error_code(std::error_code ec);
+
+    void end(std::error_code& ec);
+private:
+    class impl;
+    std::unique_ptr<impl> pimpl_;
+};
+
 namespace detail
 {
 
@@ -312,19 +340,21 @@ struct sql_parameters_tuple_helper<0, parameter_binding, Tuple>
 
 }
 
-class sql_prepared_statement
+class prepared_statement
 {
+    friend class connection;
+    class impl;
 public:
-    sql_prepared_statement();
-    ~sql_prepared_statement();
-
-    void prepare(sql_connection& conn, const std::string& query, std::error_code& ec);
+    prepared_statement();
+    prepared_statement(prepared_statement&&) = default;
+    prepared_statement(std::unique_ptr<impl>&& pimpl);
+    ~prepared_statement();
 
     void execute(std::error_code& ec);
 
     template <typename Tuple>
     void execute(const Tuple& parameters,
-                 const std::function<void(const sql_record& record)>& callback,
+                 const std::function<void(const record& rec)>& callback,
                  std::error_code& ec)
     {
         using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
@@ -332,10 +362,7 @@ public:
         const size_t num_elements = std::tuple_size<Tuple>::value;
         std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
         helper::to_parameters(parameters, params);
-
-        //std::cout << "Tuple size = " << num_elements << std::endl;
-
-        do_execute(params,callback,ec);
+        execute_(params,callback,ec);
     }
 
     template <typename Tuple>
@@ -347,18 +374,65 @@ public:
         const size_t num_elements = std::tuple_size<Tuple>::value;
         std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
         helper::to_parameters(parameters, params);
+        execute_(params,ec);
+    }
 
-        //std::cout << "Tuple size = " << num_elements << std::endl;
+    template <typename Tuple>
+    void execute(const Tuple& parameters,
+                 transaction& t)
+    {
+        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
 
-        do_execute(params,ec);
+        const size_t num_elements = std::tuple_size<Tuple>::value;
+        std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
+        helper::to_parameters(parameters, params);
+        execute_(params,t);
     }
 private:
-    void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings,
-        const std::function<void(const sql_record& record)>& callback,
+    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
+        const std::function<void(const record& rec)>& callback,
         std::error_code& ec);
-    void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings,
+    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
         std::error_code& ec);
+    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
+                    transaction& t);
 
+    std::unique_ptr<impl> pimpl_;
+};
+
+// connection
+
+class connection
+{
+public:
+    friend class transaction;
+    friend class statement;
+    friend class prepared_statement;
+
+    connection();
+    ~connection();
+
+    void open(const std::string& connString, bool autoCommit, std::error_code& ec);
+
+    void auto_commit(bool value, std::error_code& ec);
+
+    void connection_timeout(size_t value, std::error_code& ec);
+
+    prepared_statement prepare_statement(const std::string& query, transaction& trans);
+
+    prepared_statement prepare_statement(const std::string& query, std::error_code& ec);
+
+    void commit(std::error_code& ec);
+
+    void rollback(std::error_code& ec);
+
+    void execute(const std::string& query, 
+                 std::error_code& ec);
+
+    void execute(const std::string& query, 
+                 const std::function<void(const record& rec)>& callback,
+                 std::error_code& ec);
+private:
     class impl;
     std::unique_ptr<impl> pimpl_;
 };

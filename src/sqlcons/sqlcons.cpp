@@ -15,9 +15,11 @@
 
 namespace sqlcons {
 
+const int sql_data_types::smallint_id = SQL_SMALLINT;
 const int sql_data_types::integer_id = SQL_INTEGER;
 const int sql_data_types::string_id = SQL_WVARCHAR;
 
+const int sql_c_data_types::smallint_id = SQL_C_SSHORT;
 const int sql_c_data_types::integer_id = SQL_C_SLONG;
 const int sql_c_data_types::string_id = SQL_C_WCHAR;
 
@@ -29,10 +31,16 @@ parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier,
                                     unicons::conv_flags::strict);
     ind_ = value_.size();
     value_.push_back(0);
+
+    //std::cout << "parameter<std::string> "
+    //          << "sql_type_identifier: " << sql_type_identifier
+    //          << ", c_type_identifier: " << c_type_identifier
+    //          << ", value: " << value
+    //          << std::endl;
 }
 
 void process_results(SQLHSTMT hstmt,
-                     const std::function<void(const sql_record& record)>& callback,
+                     const std::function<void(const record& rec)>& callback,
                      std::error_code& ec);
 
 void handle_diagnostic_record(SQLHANDLE hHandle,
@@ -59,6 +67,8 @@ std::string sqlcons_error_category_impl::message(int ev) const
     {
     case sql_errc::E_01000:
         return "[01000] General warning";
+    case sql_errc::E_01S02:
+        return "[01S02] Option value changed";
     case sql_errc::E_01001:
         return "[01001] Cursor operation conflict";
     case sql_errc::E_01003:
@@ -113,14 +123,26 @@ std::string sqlcons_error_category_impl::message(int ev) const
         return "[HY001] Memory allocation error";
     case sql_errc::E_HY008:
         return "[HY008] Operation canceled";
+    case sql_errc::E_HY009:
+        return "[HY009] Invalid use of null pointer";
     case sql_errc::E_HY010:
         return "[HY010] Function sequence error";
     case sql_errc::E_HY013:
         return "[HY013] Memory management error";
+    case sql_errc::E_HY024:
+        return "[HY024] Invalid attribute value";
+    case sql_errc::E_HY090:
+        return "[HY090] Invalid string or buffer length";
+    case sql_errc::E_HY092:
+        return "[HY092] Invalid attribute/option identifier";
+    case sql_errc::E_HY104:
+        return "[HY104] Invalid precision or scale value";
     case sql_errc::E_HY117:
         return "[HY117] Connection is suspended due to unknown transaction state";
     case sql_errc::E_HYT01:
         return "[HYT01] Connection timeout expired";
+    case sql_errc::E_HYC00:
+        return "[HYC00] Optional feature not implemented";
     case sql_errc::E_IM001:
         return "[IM001] Driver does not support this function";
     case sql_errc::E_IM017:
@@ -138,7 +160,7 @@ std::string sqlcons_error_category_impl::message(int ev) const
 
 enum class sql_data_type {wstring_t,string_t,integer_t,double_t};
 
-class sql_column_impl : public sql_column
+class sql_column_impl : public record_column
 {
 public:
     std::wstring name_;
@@ -290,35 +312,37 @@ public:
     }
 };
 
-// sql_record
+// record
 
-sql_record::sql_record(std::vector<sql_column*>&& columns)
+record::record(std::vector<record_column*>&& columns)
     : columns_(std::move(columns))
 {
 }
 
-sql_record::~sql_record() = default;
+record::~record() = default;
 
-size_t sql_record::size() const
+size_t record::size() const
 {
     return columns_.size();
 }
 
-const sql_column& sql_record::operator[](size_t index) const
+const record_column& record::operator[](size_t index) const
 {
     return *columns_[index];
 }
 
-// sql_connection::impl
+// connection::impl
 
-class sql_connection::impl
+class connection::impl
 {
+private:
+    bool autoCommit_;
 public:
     SQLHENV     henv_;
     SQLHDBC     hdbc_; 
 
     impl()
-        : henv_(nullptr), hdbc_(nullptr)
+        : henv_(nullptr), hdbc_(nullptr), autoCommit_(false)
     {
     }
 
@@ -336,26 +360,88 @@ public:
         } 
     }
 
-    void open(const std::string& connString, std::error_code& ec);
-    void execute(const std::string query, 
+    void open(const std::string& connString, bool autoCommit, std::error_code& ec);
+
+    void auto_commit(bool value, std::error_code& ec);
+
+    void connection_timeout(size_t value, std::error_code& ec);
+
+    prepared_statement prepare_statement(const std::string& query, std::error_code& ec);
+
+    prepared_statement prepare_statement(const std::string& query, transaction& trans);
+
+    void commit(std::error_code& ec);
+    void rollback(std::error_code& ec);
+    void execute(const std::string& query, 
                  std::error_code& ec);
-    void execute(const std::string query, 
-                 const std::function<void(const sql_record& record)>& callback,
+    void execute(const std::string& query, 
+                 const std::function<void(const record& rec)>& callback,
                  std::error_code& ec);
 };
 
-// sql_statement
+// transaction::impl
 
-class sql_statement
+class transaction::impl
 {
-    SQLHSTMT    hstmt_; 
 public:
-    sql_statement()
+    impl(connection::impl* pimpl)
+        : pimpl_(pimpl)
+    {
+        std::error_code ec;
+        pimpl_->auto_commit(false,ec);
+        update_error_code(ec);
+    }
+    ~impl()
+    {
+        std::error_code ec;
+        end(ec);
+    }
+
+    std::error_code error_code() const
+    {
+        return ec_;
+    }
+
+    void update_error_code(std::error_code ec)
+    {
+        if (ec)
+        {
+            ec_ = ec;
+        }
+    }
+
+    void end(std::error_code& ec)
+    {
+        if (pimpl_ != nullptr)
+        {
+            if (ec_)
+            {
+                pimpl_->rollback(ec);
+            }
+            else
+            {
+                pimpl_->commit(ec);
+            }
+            pimpl_ = nullptr;
+        }
+    }
+private:
+    connection::impl* pimpl_;
+    std::error_code ec_;
+};
+
+// statement
+
+class statement
+{
+    SQLHSTMT hstmt_; 
+public:
+    statement()
         : hstmt_(nullptr)
     {
     }
 
-    ~sql_statement()
+    ~statement()
     {
         if (hstmt_) 
         { 
@@ -364,18 +450,18 @@ public:
     }
 
     void execute(SQLHDBC hDbc, 
-                 const std::string query, 
+                 const std::string& query, 
                  std::error_code& ec);
 
     void execute(SQLHDBC hDbc, 
-                 const std::string query, 
-                 const std::function<void(const sql_record& record)>& callback,
+                 const std::string& query, 
+                 const std::function<void(const record& rec)>& callback,
                  std::error_code& ec);
 };
 
-// sql_prepared_statement::impl
+// prepared_statement::impl
 
-class sql_prepared_statement::impl
+class prepared_statement::impl
 {
 public:
     SQLHSTMT hstmt_; 
@@ -385,6 +471,15 @@ public:
     {
     }
 
+    impl(SQLHSTMT hstmt)
+        : hstmt_(hstmt)
+    {
+    }
+
+    impl(const impl&) = delete;
+
+    impl(impl&&) = default;
+
     ~impl()
     {
         if (hstmt_) 
@@ -393,19 +488,20 @@ public:
         } 
     }
 
-    void prepare(SQLHDBC hDbc, const std::string& query, std::error_code& ec);
-
-    void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
-                    const std::function<void(const sql_record& record)>& callback,
+    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                    const std::function<void(const record& rec)>& callback,
                     std::error_code& ec);
 
-    void do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
                     std::error_code& ec);
+
+    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                  transaction& t);
 };
 
-void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
-                                              const std::function<void(const sql_record& record)>& callback,
-                                              std::error_code& ec)
+void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                                          const std::function<void(const record& rec)>& callback,
+                                          std::error_code& ec)
 {
     RETCODE rc;
 
@@ -447,8 +543,8 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
     process_results(hstmt_, callback, ec);
 }
 
-void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
-                                              std::error_code& ec)
+void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                                          std::error_code& ec)
 {
     RETCODE rc;
 
@@ -488,73 +584,104 @@ void sql_prepared_statement::impl::do_execute(std::vector<std::unique_ptr<parame
     }
 }
 
-void sql_prepared_statement::impl::prepare(SQLHDBC hDbc,
-                                           const std::string& query,
-                                           std::error_code& ec)
+void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                                          transaction& t)
 {
-    std::wstring wquery;
-    auto result1 = unicons::convert(query.begin(), query.end(),
-                                    std::back_inserter(wquery), 
-                                    unicons::conv_flags::strict);
-
-    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hstmt_);
-    if (rc == SQL_ERROR)
+    if (!t.error_code())
     {
-        handle_diagnostic_record(hDbc, SQL_HANDLE_DBC, rc, ec);
-        return;
+        std::error_code ec;
+        execute_(bindings,ec);
+        t.update_error_code(ec);
     }
-    rc = SQLPrepare(hstmt_, &wquery[0], (SQLINTEGER)wquery.size()); 
-    if (rc == SQL_ERROR)
-    {
-        handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
-        return;
-    }
-
 }
 
-// sql_prepared_statement
+// prepared_statement
 
-sql_prepared_statement::sql_prepared_statement() : pimpl_(new impl()) {}
+prepared_statement::prepared_statement() : pimpl_(new impl()) {}
 
-sql_prepared_statement::~sql_prepared_statement() = default;
+prepared_statement::prepared_statement(std::unique_ptr<prepared_statement::impl>&& impl) : pimpl_(std::move(impl)) {}
 
-void sql_prepared_statement::prepare(sql_connection& conn, const std::string& connString, std::error_code& ec)
-{
-    pimpl_->prepare(conn.pimpl_->hdbc_,connString, ec);
-}
+prepared_statement::~prepared_statement() = default;
 
-void sql_prepared_statement::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
-                                        const std::function<void(const sql_record& record)>& callback,
+void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                                        const std::function<void(const record& rec)>& callback,
                                         std::error_code& ec)
 {
-    pimpl_->do_execute(bindings, callback, ec);
+    pimpl_->execute_(bindings, callback, ec);
 }
 
-void sql_prepared_statement::do_execute(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
                                         std::error_code& ec)
 {
-    pimpl_->do_execute(bindings, ec);
+    pimpl_->execute_(bindings, ec);
 }
 
-// sql_connection::impl
-
-void sql_connection::impl::execute(const std::string query, 
-                                   const std::function<void(const sql_record& record)>& callback,
-                                   std::error_code& ec)
+void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+                                  transaction& t)
 {
-    sql_statement q;
+    pimpl_->execute_(bindings, t);
+}
+
+// connection::impl
+
+void connection::impl::auto_commit(bool value, std::error_code& ec)
+{
+    autoCommit_ = value;
+
+    RETCODE rc;
+    if (autoCommit_)
+    {
+        rc = SQLSetConnectAttr(hdbc_, 
+                           SQL_ATTR_AUTOCOMMIT, 
+                           (SQLPOINTER)TRUE, 
+                           0);
+    }
+    else
+    {
+        rc = SQLSetConnectAttr(hdbc_, 
+                           SQL_ATTR_AUTOCOMMIT, 
+                           (SQLPOINTER)FALSE, 
+                           0);
+    }
+    if (rc != SQL_SUCCESS)
+    {
+        handle_diagnostic_record(henv_, SQL_HANDLE_ENV, rc, ec);
+    }
+}
+
+void connection::impl::connection_timeout(size_t value, std::error_code& ec)
+{
+    RETCODE rc;
+
+    rc = SQLSetConnectAttr(hdbc_, 
+                       SQL_ATTR_CONNECTION_TIMEOUT, 
+                       (SQLPOINTER)value, 
+                       0);
+    if (rc != SQL_SUCCESS)
+    {
+        handle_diagnostic_record(henv_, SQL_HANDLE_ENV, rc, ec);
+    }
+}
+
+void connection::impl::execute(const std::string& query, 
+                               const std::function<void(const record& rec)>& callback,
+                               std::error_code& ec)
+{
+    statement q;
     q.execute(hdbc_,query,callback,ec);
 }
 
-void sql_connection::impl::execute(const std::string query, 
-                                   std::error_code& ec)
+void connection::impl::execute(const std::string& query, 
+                               std::error_code& ec)
 {
-    sql_statement q;
+    statement q;
     q.execute(hdbc_,query,ec);
 }
 
-void sql_connection::impl::open(const std::string& connString, std::error_code& ec)
+void connection::impl::open(const std::string& connString, bool autoCommit, std::error_code& ec)
 {
+    autoCommit_ = autoCommit;
+
     RETCODE rc = SQLAllocHandle(SQL_HANDLE_ENV, 
                                 SQL_NULL_HANDLE, 
                                 &henv_);
@@ -563,17 +690,6 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
         ec = make_error_code(sql_errc::db_err);
         return;
     }
-
-    std::wstring cs;
-    auto result1 = unicons::convert(connString.begin(),connString.end(),
-                                    std::back_inserter(cs), 
-                                    unicons::conv_flags::strict);
-    //std::cout << connString << std::endl;
-    std::wcout << cs << std::endl;
-
-    WCHAR* pwszConnStr = L"Driver={SQL Server};Server=localhost;Database=master;Trusted_Connection=Yes;"; 
-    std::wcout << pwszConnStr << std::endl;
-
 
     // Register this as an application that expects 3.x behavior, 
     // you must register something if you use AllocHandle 
@@ -595,7 +711,34 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
         return;
     }
 
-    // Connect to the driver.  Use the sql_connection string if supplied 
+    std::wstring cs;
+    auto result1 = unicons::convert(connString.begin(),connString.end(),
+                                    std::back_inserter(cs), 
+                                    unicons::conv_flags::strict);
+    //std::cout << connString << std::endl;
+    std::wcout << cs << std::endl;
+
+    if (autoCommit)
+    {
+        rc = SQLSetConnectAttr(hdbc_, 
+                           SQL_ATTR_AUTOCOMMIT, 
+                           (SQLPOINTER)TRUE, 
+                           0);
+    }
+    else
+    {
+        rc = SQLSetConnectAttr(hdbc_, 
+                           SQL_ATTR_AUTOCOMMIT, 
+                           (SQLPOINTER)FALSE, 
+                           0);
+    }
+    if (rc != SQL_SUCCESS)
+    {
+        handle_diagnostic_record(henv_, SQL_HANDLE_ENV, rc, ec);
+        return;
+    }
+
+    // Connect to the driver.  Use the connection string if supplied 
     // on the input, otherwise let the driver manager prompt for input. 
     rc = SQLDriverConnect(hdbc_, 
                          NULL, 
@@ -612,35 +755,116 @@ void sql_connection::impl::open(const std::string& connString, std::error_code& 
     }
 }
 
-// sql_connection
-
-sql_connection::sql_connection() : pimpl_(new impl()) {}
-
-sql_connection::~sql_connection() = default;
-
-void sql_connection::open(const std::string& connString, std::error_code& ec)
+prepared_statement connection::impl::prepare_statement(const std::string& query, transaction& trans)
 {
-    pimpl_->open(connString, ec);
+    std::error_code ec;
+    prepared_statement stat = prepare_statement(query,ec);
+    if (ec)
+    {
+        trans.update_error_code(ec);
+    }
+    return std::move(stat);
 }
 
-void sql_connection::execute(const std::string query, 
-                             std::error_code& ec)
+prepared_statement connection::impl::prepare_statement(const std::string& query, std::error_code& ec)
+{
+    std::wstring wquery;
+    auto result1 = unicons::convert(query.begin(), query.end(),
+                                    std::back_inserter(wquery), 
+                                    unicons::conv_flags::strict);
+
+    SQLHSTMT    hstmt; 
+    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hdbc_, &hstmt);
+    if (rc == SQL_ERROR)
+    {
+        handle_diagnostic_record(hdbc_, SQL_HANDLE_DBC, rc, ec);
+        return prepared_statement();
+    }
+    rc = SQLPrepare(hstmt, &wquery[0], (SQLINTEGER)wquery.size()); 
+    if (rc == SQL_ERROR)
+    {
+        handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
+        return prepared_statement();
+    }
+
+    return prepared_statement(std::make_unique<prepared_statement::impl>(hstmt));
+}
+
+void connection::impl::commit(std::error_code& ec)
+{
+    if (!autoCommit_)
+    {
+        RETCODE rc = SQLEndTran (SQL_HANDLE_DBC, hdbc_, SQL_COMMIT);
+        if (rc == SQL_ERROR)
+        {
+            ec = make_error_code(sql_errc::db_err);
+            return;
+        }
+    }
+}
+
+void connection::impl::rollback(std::error_code& ec)
+{
+    if (!autoCommit_)
+    {
+        RETCODE rc = SQLEndTran (SQL_HANDLE_DBC, hdbc_, SQL_ROLLBACK);
+        if (rc == SQL_ERROR)
+        {
+            ec = make_error_code(sql_errc::db_err);
+            return;
+        }
+    }
+}
+
+// connection
+
+connection::connection() : pimpl_(new impl()) {}
+
+connection::~connection() = default;
+
+void connection::open(const std::string& connString, bool autoCommit, std::error_code& ec)
+{
+    pimpl_->open(connString, autoCommit, ec);
+}
+
+void connection::auto_commit(bool value, std::error_code& ec)
+{
+    pimpl_->auto_commit(value, ec);
+}
+
+void connection::connection_timeout(size_t value, std::error_code& ec)
+{
+    pimpl_->connection_timeout(value, ec);
+}
+
+prepared_statement connection::prepare_statement(const std::string& query, std::error_code& ec)
+{
+    return pimpl_->prepare_statement(query, ec);
+}
+
+prepared_statement connection::prepare_statement(const std::string& query, transaction& trans)
+{
+    return pimpl_->prepare_statement(query, trans);
+}
+
+void connection::execute(const std::string& query, 
+                         std::error_code& ec)
 {
     pimpl_->execute(query, ec);
 }
 
-void sql_connection::execute(const std::string query, 
-                             const std::function<void(const sql_record& record)>& callback,
-                             std::error_code& ec)
+void connection::execute(const std::string& query, 
+                         const std::function<void(const record& rec)>& callback,
+                         std::error_code& ec)
 {
     pimpl_->execute(query, callback, ec);
 }
 
 
-void sql_statement::execute(SQLHDBC hDbc, 
-                           const std::string query, 
-                           const std::function<void(const sql_record& record)>& callback,
-                           std::error_code& ec)
+void statement::execute(SQLHDBC hDbc, 
+                        const std::string& query, 
+                        const std::function<void(const record& rec)>& callback,
+                        std::error_code& ec)
 {
     std::wstring buf;
     auto result1 = unicons::convert(query.begin(), query.end(),
@@ -664,9 +888,9 @@ void sql_statement::execute(SQLHDBC hDbc,
     process_results(hstmt_, callback, ec);
 }
 
-void sql_statement::execute(SQLHDBC hDbc, 
-                            const std::string query, 
-                            std::error_code& ec)
+void statement::execute(SQLHDBC hDbc, 
+                        const std::string& query, 
+                        std::error_code& ec)
 {
     std::wstring buf;
     auto result1 = unicons::convert(query.begin(), query.end(),
@@ -703,6 +927,7 @@ struct odbc_error_codes
     odbc_error_codes()
     {
         code_map[L"01000"] = sql_errc::E_01000;
+        code_map[L"01S02"] = sql_errc::E_01S02; 
         code_map[L"01001"] = sql_errc::E_01001;
         code_map[L"01003"] = sql_errc::E_01003;
         code_map[L"07002"] = sql_errc::E_07002;
@@ -730,10 +955,16 @@ struct odbc_error_codes
         code_map[L"HY000"] = sql_errc::E_HY000;
         code_map[L"HY001"] = sql_errc::E_HY001;
         code_map[L"HY008"] = sql_errc::E_HY008;
+        code_map[L"HY009"] = sql_errc::E_HY009; //
         code_map[L"HY010"] = sql_errc::E_HY010;
         code_map[L"HY013"] = sql_errc::E_HY013;
+        code_map[L"HY024"] = sql_errc::E_HY024; //
+        code_map[L"HY090"] = sql_errc::E_HY090; //
+        code_map[L"HY092"] = sql_errc::E_HY092; //
+        code_map[L"HY104"] = sql_errc::E_HY104;
         code_map[L"HY117"] = sql_errc::E_HY117;
         code_map[L"HYT01"] = sql_errc::E_HYT01;
+        code_map[L"HYC00"] = sql_errc::E_HYC00; //
         code_map[L"IM001"] = sql_errc::E_IM001;
         code_map[L"IM017"] = sql_errc::E_IM017;
         code_map[L"IM018"] = sql_errc::E_IM018;
@@ -801,7 +1032,7 @@ void handle_diagnostic_record(SQLHANDLE      hHandle,
 } 
 
 void process_results(SQLHSTMT hstmt,
-                     const std::function<void(const sql_record& record)>& callback,
+                     const std::function<void(const record& rec)>& callback,
                      std::error_code& ec)
 {
     RETCODE rc;
@@ -891,6 +1122,7 @@ void process_results(SQLHSTMT hstmt,
                 std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
                 break;
             case SQL_WVARCHAR:
+            case SQL_WLONGVARCHAR:
             case SQL_WCHAR:
                 type = sql_data_type::wstring_t;
                 std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
@@ -904,7 +1136,7 @@ void process_results(SQLHSTMT hstmt,
                 std::wcout << std::wstring(&name[0],nameLength) << " " << "Float" << std::endl;
                 break;
             default:
-                std::wcout << std::wstring(&name[0],nameLength) << " " << dataType << std::endl;
+                std::wcout << std::wstring(&name[0],nameLength) << ", dataType= " << dataType << std::endl;
                 break;
             }
             switch (type)
@@ -1014,14 +1246,14 @@ void process_results(SQLHSTMT hstmt,
     { 
         bool fNoData = false; 
 
-        std::vector<sql_column*> cols;
+        std::vector<record_column*> cols;
         cols.reserve(columns.size());
         for (auto& c : columns)
         {
             cols.push_back(&c);
         }
 
-        sql_record record(std::move(cols));
+        record rec(std::move(cols));
 
         do { 
             // Fetch a row 
@@ -1034,7 +1266,7 @@ void process_results(SQLHSTMT hstmt,
             }
             if (rc == SQL_SUCCESS) 
             { 
-                callback(record);
+                callback(rec);
             } 
             else 
             { 
@@ -1045,6 +1277,35 @@ void process_results(SQLHSTMT hstmt,
         while (!fNoData); 
         rc = SQLCloseCursor(hstmt);
     }
+}
+
+// transaction
+
+transaction::transaction(connection& conn) 
+    : pimpl_(new impl(conn.pimpl_.get()))
+{
+    std::error_code ec;
+    if (ec)
+    {
+        update_error_code(ec);
+    }
+}
+
+transaction::~transaction() = default;
+
+std::error_code transaction::error_code() const
+{
+    return pimpl_->error_code();
+}
+
+void transaction::update_error_code(std::error_code ec)
+{
+    pimpl_->update_error_code(ec);
+}
+
+void transaction::end(std::error_code& ec)
+{
+    pimpl_->end(ec);
 }
 
 }
