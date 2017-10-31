@@ -1,7 +1,7 @@
 #include <sqlcons/sqlcons.hpp>
 #include <windows.h> 
 //#include <sql.h> 
-
+#define UNICODE  
 #include <sqlext.h> 
 #include <stdio.h> 
 #include <conio.h> 
@@ -10,7 +10,8 @@
 #include <iostream>
 #include <sqlcons/unicode_traits.hpp>
 #include <vector>
-#include  <sstream>
+#include <sstream>
+#include <sqlcons_connector/odbc/connector.hpp>
 
 namespace sqlcons {
 
@@ -23,7 +24,7 @@ const int sql_c_data_types::integer_id = SQL_C_SLONG;
 const int sql_c_data_types::string_id = SQL_C_WCHAR;
 
 parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier, const std::string& val)
-    : parameter_binding(sql_type_identifier, c_type_identifier)
+    : base_parameter(sql_type_identifier, c_type_identifier)
 {
     auto result1 = unicons::convert(val.begin(),val.end(),
                                     std::back_inserter(value_), 
@@ -83,7 +84,7 @@ std::string sqlcons_error_category_impl::message(int ev) const
     case sql_errc::E_08S01:
         return "[08S01] Communication link failure";
     case sql_errc::E_21S02:
-        return "[21S02] Degree of derived table does not match data_value list";
+        return "[21S02] Degree of derived table does not match column list";
     case sql_errc::E_22001:
         return "[22001] String data, right truncation";
     case sql_errc::E_22002:
@@ -159,7 +160,7 @@ std::string sqlcons_error_category_impl::message(int ev) const
 
 enum class sql_data_type {wstring_t,string_t,integer_t,double_t};
 
-class data_value_impl : public data_value
+class data_value_impl : public value
 {
 public:
     std::wstring name_;
@@ -313,7 +314,7 @@ public:
 
 // row
 
-row::row(std::vector<data_value*>&& values)
+row::row(std::vector<value*>&& values)
     : values_(std::move(values))
 {
 }
@@ -325,14 +326,14 @@ size_t row::size() const
     return values_.size();
 }
 
-const data_value& row::operator[](size_t index) const
+const value& row::operator[](size_t index) const
 {
     return *values_[index];
 }
 
-// connection::impl
+// connection_impl
 
-class connection::impl
+class connection_impl
 {
 private:
     bool autoCommit_;
@@ -340,12 +341,12 @@ public:
     SQLHENV     henv_;
     SQLHDBC     hdbc_; 
 
-    impl()
+    connection_impl()
         : henv_(nullptr), hdbc_(nullptr), autoCommit_(false)
     {
     }
 
-    ~impl()
+    ~connection_impl()
     {
         if (hdbc_) 
         { 
@@ -378,19 +379,19 @@ public:
                  std::error_code& ec);
 };
 
-// transaction::impl
+// transaction_impl
 
-class transaction::impl
+class transaction_impl
 {
 public:
-    impl(connection::impl* pimpl)
+    transaction_impl(connection_impl* pimpl)
         : pimpl_(pimpl)
     {
         std::error_code ec;
         pimpl_->auto_commit(false,ec);
         update_error_code(ec);
     }
-    ~impl()
+    ~transaction_impl()
     {
         std::error_code ec;
         end(ec);
@@ -425,7 +426,7 @@ public:
         }
     }
 private:
-    connection::impl* pimpl_;
+    connection_impl* pimpl_;
     std::error_code ec_;
 };
 
@@ -458,28 +459,28 @@ public:
                  std::error_code& ec);
 };
 
-// prepared_statement::impl
+// prepared_statement_impl
 
-class prepared_statement::impl
+class prepared_statement_impl
 {
 public:
     SQLHSTMT hstmt_; 
 
-    impl()
+    prepared_statement_impl()
         : hstmt_(nullptr)
     {
     }
 
-    impl(SQLHSTMT hstmt)
+    prepared_statement_impl(SQLHSTMT hstmt)
         : hstmt_(hstmt)
     {
     }
 
-    impl(const impl&) = delete;
+    prepared_statement_impl(const prepared_statement_impl&) = delete;
 
-    impl(impl&&) = default;
+    prepared_statement_impl(prepared_statement_impl&&) = default;
 
-    ~impl()
+    ~prepared_statement_impl()
     {
         if (hstmt_) 
         { 
@@ -487,18 +488,18 @@ public:
         } 
     }
 
-    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                     const std::function<void(const row& rec)>& callback,
                     std::error_code& ec);
 
-    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                     std::error_code& ec);
 
-    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                   transaction& t);
 };
 
-void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                           const std::function<void(const row& rec)>& callback,
                                           std::error_code& ec)
 {
@@ -542,7 +543,7 @@ void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_bi
     process_results(hstmt_, callback, ec);
 }
 
-void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                           std::error_code& ec)
 {
     RETCODE rc;
@@ -583,7 +584,7 @@ void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_bi
     }
 }
 
-void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                           transaction& t)
 {
     if (!t.error_code())
@@ -596,34 +597,34 @@ void prepared_statement::impl::execute_(std::vector<std::unique_ptr<parameter_bi
 
 // prepared_statement
 
-prepared_statement::prepared_statement() : pimpl_(new impl()) {}
+prepared_statement::prepared_statement() : pimpl_(new prepared_statement_impl()) {}
 
-prepared_statement::prepared_statement(std::unique_ptr<prepared_statement::impl>&& impl) : pimpl_(std::move(impl)) {}
+prepared_statement::prepared_statement(std::unique_ptr<prepared_statement_impl>&& impl) : pimpl_(std::move(impl)) {}
 
 prepared_statement::~prepared_statement() = default;
 
-void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+void prepared_statement::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                         const std::function<void(const row& rec)>& callback,
                                         std::error_code& ec)
 {
     pimpl_->execute_(bindings, callback, ec);
 }
 
-void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+void prepared_statement::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                         std::error_code& ec)
 {
     pimpl_->execute_(bindings, ec);
 }
 
-void prepared_statement::execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings, 
+void prepared_statement::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                   transaction& t)
 {
     pimpl_->execute_(bindings, t);
 }
 
-// connection::impl
+// connection_impl
 
-void connection::impl::auto_commit(bool val, std::error_code& ec)
+void connection_impl::auto_commit(bool val, std::error_code& ec)
 {
     autoCommit_ = val;
 
@@ -648,7 +649,7 @@ void connection::impl::auto_commit(bool val, std::error_code& ec)
     }
 }
 
-void connection::impl::connection_timeout(size_t val, std::error_code& ec)
+void connection_impl::connection_timeout(size_t val, std::error_code& ec)
 {
     RETCODE rc;
 
@@ -662,7 +663,7 @@ void connection::impl::connection_timeout(size_t val, std::error_code& ec)
     }
 }
 
-void connection::impl::execute(const std::string& query, 
+void connection_impl::execute(const std::string& query, 
                                const std::function<void(const row& rec)>& callback,
                                std::error_code& ec)
 {
@@ -670,14 +671,14 @@ void connection::impl::execute(const std::string& query,
     q.execute(hdbc_,query,callback,ec);
 }
 
-void connection::impl::execute(const std::string& query, 
+void connection_impl::execute(const std::string& query, 
                                std::error_code& ec)
 {
     statement q;
     q.execute(hdbc_,query,ec);
 }
 
-void connection::impl::open(const std::string& connString, bool autoCommit, std::error_code& ec)
+void connection_impl::open(const std::string& connString, bool autoCommit, std::error_code& ec)
 {
     autoCommit_ = autoCommit;
 
@@ -715,7 +716,7 @@ void connection::impl::open(const std::string& connString, bool autoCommit, std:
                                     std::back_inserter(cs), 
                                     unicons::conv_flags::strict);
     //std::cout << connString << std::endl;
-    std::wcout << cs << std::endl;
+    //std::wcout << cs << std::endl;
 
     if (autoCommit)
     {
@@ -754,7 +755,7 @@ void connection::impl::open(const std::string& connString, bool autoCommit, std:
     }
 }
 
-prepared_statement connection::impl::prepare_statement(const std::string& query, transaction& trans)
+prepared_statement connection_impl::prepare_statement(const std::string& query, transaction& trans)
 {
     std::error_code ec;
     prepared_statement stat = prepare_statement(query,ec);
@@ -765,7 +766,7 @@ prepared_statement connection::impl::prepare_statement(const std::string& query,
     return std::move(stat);
 }
 
-prepared_statement connection::impl::prepare_statement(const std::string& query, std::error_code& ec)
+prepared_statement connection_impl::prepare_statement(const std::string& query, std::error_code& ec)
 {
     std::wstring wquery;
     auto result1 = unicons::convert(query.begin(), query.end(),
@@ -786,10 +787,10 @@ prepared_statement connection::impl::prepare_statement(const std::string& query,
         return prepared_statement();
     }
 
-    return prepared_statement(std::make_unique<prepared_statement::impl>(hstmt));
+    return prepared_statement(std::make_unique<prepared_statement_impl>(hstmt));
 }
 
-void connection::impl::commit(std::error_code& ec)
+void connection_impl::commit(std::error_code& ec)
 {
     if (!autoCommit_)
     {
@@ -802,7 +803,7 @@ void connection::impl::commit(std::error_code& ec)
     }
 }
 
-void connection::impl::rollback(std::error_code& ec)
+void connection_impl::rollback(std::error_code& ec)
 {
     if (!autoCommit_)
     {
@@ -817,7 +818,7 @@ void connection::impl::rollback(std::error_code& ec)
 
 // connection
 
-connection::connection() : pimpl_(new impl()) {}
+connection::connection() : pimpl_(new connection_impl()) {}
 
 connection::~connection() = default;
 
@@ -1052,7 +1053,7 @@ void process_results(SQLHSTMT hstmt,
         { 
             SQLSMALLINT columnNameLength = 100;
 
-            // Figure out the length of the data_value name 
+            // Figure out the length of the value name 
             rc = SQLColAttribute(hstmt, 
                                  col, 
                                  SQL_DESC_NAME, 
@@ -1083,7 +1084,7 @@ void process_results(SQLHSTMT hstmt,
                            &decimalDigits,  
                            &nullable);  
 
-            std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
+            //std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
             values.push_back(
                 data_value_impl(std::wstring(&name[0],nameLength),
                                 dataType,
@@ -1098,33 +1099,33 @@ void process_results(SQLHSTMT hstmt,
             case SQL_DATE:
             case SQL_TYPE_DATE:
                 type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Date" << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << " " << "Date" << std::endl;
                 break;
             case SQL_TYPE_TIME:
                 type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Time" << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << " " << "Time" << std::endl;
                 break;
             case SQL_TYPE_TIMESTAMP:
                 type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "SQL_TYPE_TIMESTAMP" << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << " " << "SQL_TYPE_TIMESTAMP" << std::endl;
                 break;
             case SQL_SMALLINT:
             case SQL_TINYINT:
             case SQL_INTEGER:
             case SQL_BIGINT:
                 type = sql_data_type::integer_t;
-                std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
+                //std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
                 break;
             case SQL_VARCHAR:
             case SQL_CHAR:
                 type = sql_data_type::string_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
                 break;
             case SQL_WVARCHAR:
             case SQL_WLONGVARCHAR:
             case SQL_WCHAR:
                 type = sql_data_type::wstring_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << " " << "wchar" << std::endl;
                 break;
             case SQL_DECIMAL:
             case SQL_NUMERIC:
@@ -1132,10 +1133,10 @@ void process_results(SQLHSTMT hstmt,
             case SQL_FLOAT:
             case SQL_DOUBLE:
                 type = sql_data_type::double_t;
-                std::wcout << std::wstring(&name[0],nameLength) << " " << "Float" << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << " " << "Float" << std::endl;
                 break;
             default:
-                std::wcout << std::wstring(&name[0],nameLength) << ", dataType= " << dataType << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << ", dataType= " << dataType << std::endl;
                 break;
             }
             switch (type)
@@ -1234,7 +1235,7 @@ void process_results(SQLHSTMT hstmt,
                 }
                 break;
             }
-            std::wcout << "data_value name:" << std::wstring(&name[0], nameLength) << ", length:" << columnNameLength << std::endl;
+            //std::wcout << "value name:" << std::wstring(&name[0], nameLength) << ", length:" << columnNameLength << std::endl;
 
             values.back().sql_data_type_ = type;
 
@@ -1245,7 +1246,7 @@ void process_results(SQLHSTMT hstmt,
     { 
         bool fNoData = false; 
 
-        std::vector<data_value*> cols;
+        std::vector<value*> cols;
         cols.reserve(values.size());
         for (auto& c : values)
         {
@@ -1281,7 +1282,7 @@ void process_results(SQLHSTMT hstmt,
 // transaction
 
 transaction::transaction(connection& conn) 
-    : pimpl_(new impl(conn.pimpl_.get()))
+    : pimpl_(new transaction_impl(conn.pimpl_.get()))
 {
     std::error_code ec;
     if (ec)

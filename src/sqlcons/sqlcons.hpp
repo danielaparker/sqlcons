@@ -9,6 +9,7 @@
 #include <map>
 #include <array>
 #include <iostream>
+#include <sqlcons_connector/odbc/connector.hpp>
 
 namespace sqlcons {
 
@@ -150,12 +151,12 @@ std::error_code make_error_code(sql_errc result);
 template <class Tuple>
 using query_callback = std::function<void(const Tuple&)>;
 
-// data_value
+// value
 
-class data_value
+class value
 {
 public:
-    virtual ~data_value() = default;
+    virtual ~value() = default;
 
     virtual std::string as_string() const = 0;
 
@@ -171,28 +172,28 @@ public:
 class row
 {
 public:
-    row(std::vector<data_value*>&& values);
+    row(std::vector<value*>&& values);
 
     ~row();
 
     size_t size() const;
 
-    const data_value& operator[](size_t index) const;
+    const value& operator[](size_t index) const;
 private:
-    std::vector<data_value*> values_;
-    std::map<std::string,data_value*> column_map_;
+    std::vector<value*> values_;
+    std::map<std::string,value*> column_map_;
 };
 
-// parameter_binding
+// base_parameter
 
-struct parameter_binding
+struct base_parameter
 {
-    parameter_binding()
+    base_parameter()
         : sql_type_identifier_(0),
         c_type_identifier_(0)
     {
     }
-    parameter_binding(int sql_type_identifier,int c_type_identifier)
+    base_parameter(int sql_type_identifier,int c_type_identifier)
         : sql_type_identifier_(sql_type_identifier), 
           c_type_identifier_(c_type_identifier)
     {
@@ -226,10 +227,10 @@ struct parameter_binding
 };
 
 template <class T>
-struct parameter : public parameter_binding
+struct parameter : public base_parameter
 {
     parameter(int sql_type_identifier,int c_type_identifier, const T& val)
-        : parameter_binding(sql_type_identifier, c_type_identifier), 
+        : base_parameter(sql_type_identifier, c_type_identifier), 
           value_(val), ind_(0)
     {
         //std::cout << "sql_type_identifier: " << sql_type_identifier
@@ -265,7 +266,7 @@ struct parameter : public parameter_binding
 };
 
 template <>
-struct parameter<std::string> : public parameter_binding
+struct parameter<std::string> : public base_parameter
 {
     parameter(int sql_type_identifier,int c_type_identifier, const std::string& val);
 
@@ -308,20 +309,19 @@ public:
 
     void end(std::error_code& ec);
 private:
-    class impl;
-    std::unique_ptr<impl> pimpl_;
+    std::unique_ptr<transaction_impl> pimpl_;
 };
 
 namespace detail
 {
 
-template<size_t Pos, class parameter_binding, class Tuple>
+template<size_t Pos, class base_parameter, class Tuple>
 struct sql_parameters_tuple_helper
 {
     using element_type = typename std::tuple_element<Pos - 1, Tuple>::type;
-    using next = sql_parameters_tuple_helper<Pos - 1, parameter_binding, Tuple>;
+    using next = sql_parameters_tuple_helper<Pos - 1, base_parameter, Tuple>;
 
-    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_binding>>& bindings)
+    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<base_parameter>>& bindings)
     {
         bindings[Pos - 1] = std::make_unique<parameter<element_type>>(sql_type_traits<element_type>::sql_type_identifier(), 
                                                                                                             sql_type_traits<element_type>::c_type_identifier(),
@@ -330,10 +330,10 @@ struct sql_parameters_tuple_helper
     }
 };
 
-template<class parameter_binding, class Tuple>
-struct sql_parameters_tuple_helper<0, parameter_binding, Tuple>
+template<class base_parameter, class Tuple>
+struct sql_parameters_tuple_helper<0, base_parameter, Tuple>
 {
-    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_binding>>& json)
+    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<base_parameter>>& json)
     {
     }
 };
@@ -342,12 +342,11 @@ struct sql_parameters_tuple_helper<0, parameter_binding, Tuple>
 
 class prepared_statement
 {
-    friend class connection;
-    class impl;
+    friend class connection_impl;
 public:
     prepared_statement();
     prepared_statement(prepared_statement&&) = default;
-    prepared_statement(std::unique_ptr<impl>&& pimpl);
+    prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl);
     ~prepared_statement();
 
     void execute(std::error_code& ec);
@@ -357,10 +356,10 @@ public:
                  const std::function<void(const row& rec)>& callback,
                  std::error_code& ec)
     {
-        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
+        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, base_parameter, Tuple>;
         
         const size_t num_elements = std::tuple_size<Tuple>::value;
-        std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
+        std::vector<std::unique_ptr<base_parameter>> params(std::tuple_size<Tuple>::value);
         helper::to_parameters(parameters, params);
         execute_(params,callback,ec);
     }
@@ -369,10 +368,10 @@ public:
     void execute(const Tuple& parameters,
                  std::error_code& ec)
     {
-        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
+        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, base_parameter, Tuple>;
 
         const size_t num_elements = std::tuple_size<Tuple>::value;
-        std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
+        std::vector<std::unique_ptr<base_parameter>> params(std::tuple_size<Tuple>::value);
         helper::to_parameters(parameters, params);
         execute_(params,ec);
     }
@@ -381,23 +380,23 @@ public:
     void execute(const Tuple& parameters,
                  transaction& t)
     {
-        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, parameter_binding, Tuple>;
+        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, base_parameter, Tuple>;
 
         const size_t num_elements = std::tuple_size<Tuple>::value;
-        std::vector<std::unique_ptr<parameter_binding>> params(std::tuple_size<Tuple>::value);
+        std::vector<std::unique_ptr<base_parameter>> params(std::tuple_size<Tuple>::value);
         helper::to_parameters(parameters, params);
         execute_(params,t);
     }
 private:
-    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings,
         const std::function<void(const row& rec)>& callback,
         std::error_code& ec);
-    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings,
         std::error_code& ec);
-    void execute_(std::vector<std::unique_ptr<parameter_binding>>& bindings,
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings,
                     transaction& t);
 
-    std::unique_ptr<impl> pimpl_;
+    std::unique_ptr<prepared_statement_impl> pimpl_;
 };
 
 // connection
@@ -433,8 +432,7 @@ public:
                  const std::function<void(const row& rec)>& callback,
                  std::error_code& ec);
 private:
-    class impl;
-    std::unique_ptr<impl> pimpl_;
+    std::unique_ptr<connection_impl> pimpl_;
 };
 
 }

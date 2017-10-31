@@ -15,7 +15,6 @@ if (ec)
 
 auto action = [](const sqlcons::row& row)
 {
-    const sqlcons::data_value& value = row[0];
     std::cout << row[0].as_long() << " " 
               << row[1].as_string() << " " 
               << row[2].as_double()  
@@ -56,7 +55,6 @@ if (ec)
 
 auto action = [](const sqlcons::row& row)
 {
-    const sqlcons::data_value& value = row[0];
     std::cout << row[0].as_long() << " " 
               << row[1].as_string() << " " 
               << row[2].as_double()  
