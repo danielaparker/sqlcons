@@ -1,16 +1,3 @@
-#include <sqlcons/sqlcons.hpp>
-#include <windows.h> 
-//#include <sql.h> 
-#define UNICODE  
-#include <sqlext.h> 
-#include <stdio.h> 
-#include <conio.h> 
-#include <tchar.h> 
-#include <stdlib.h> 
-#include <iostream>
-#include <sqlcons/unicode_traits.hpp>
-#include <vector>
-#include <sstream>
 #include <sqlcons_connector/odbc/connector.hpp>
 
 namespace sqlcons {
@@ -156,11 +143,33 @@ std::string sqlcons_error_category_impl::message(int ev) const
     }
 }
 
-// data_value_impl
+// connection_impl
+
+connection_impl::connection_impl()
+    : henv_(nullptr), hdbc_(nullptr), autoCommit_(false)
+{
+}
+
+connection_impl::~connection_impl()
+{
+    if (hdbc_) 
+    { 
+        SQLDisconnect(hdbc_); 
+        SQLFreeHandle(SQL_HANDLE_DBC, hdbc_); 
+    } 
+
+    if (henv_) 
+    { 
+        SQLFreeHandle(SQL_HANDLE_ENV, henv_); 
+    } 
+}
+
+
+// value_impl
 
 enum class sql_data_type {wstring_t,string_t,integer_t,double_t};
 
-class data_value_impl : public value
+class value_impl : public value
 {
 public:
     std::wstring name_;
@@ -176,7 +185,7 @@ public:
     double doubleValue_;
     SQLLEN length_or_null_;  // size or null
 
-    data_value_impl(std::wstring&& name,
+    value_impl(std::wstring&& name,
                     SQLSMALLINT dataType,
                     SQLULEN columnSize,
                     SQLSMALLINT decimalDigits,
@@ -312,123 +321,49 @@ public:
     }
 };
 
-// row
-
-row::row(std::vector<value*>&& values)
-    : values_(std::move(values))
-{
-}
-
-row::~row() = default;
-
-size_t row::size() const
-{
-    return values_.size();
-}
-
-const value& row::operator[](size_t index) const
-{
-    return *values_[index];
-}
-
-// connection_impl
-
-class connection_impl
-{
-private:
-    bool autoCommit_;
-public:
-    SQLHENV     henv_;
-    SQLHDBC     hdbc_; 
-
-    connection_impl()
-        : henv_(nullptr), hdbc_(nullptr), autoCommit_(false)
-    {
-    }
-
-    ~connection_impl()
-    {
-        if (hdbc_) 
-        { 
-            SQLDisconnect(hdbc_); 
-            SQLFreeHandle(SQL_HANDLE_DBC, hdbc_); 
-        } 
-
-        if (henv_) 
-        { 
-            SQLFreeHandle(SQL_HANDLE_ENV, henv_); 
-        } 
-    }
-
-    void open(const std::string& connString, bool autoCommit, std::error_code& ec);
-
-    void auto_commit(bool val, std::error_code& ec);
-
-    void connection_timeout(size_t val, std::error_code& ec);
-
-    prepared_statement prepare_statement(const std::string& query, std::error_code& ec);
-
-    prepared_statement prepare_statement(const std::string& query, transaction& trans);
-
-    void commit(std::error_code& ec);
-    void rollback(std::error_code& ec);
-    void execute(const std::string& query, 
-                 std::error_code& ec);
-    void execute(const std::string& query, 
-                 const std::function<void(const row& rec)>& callback,
-                 std::error_code& ec);
-};
-
 // transaction_impl
 
-class transaction_impl
+transaction_impl::transaction_impl(connection_impl* pimpl)
+    : pimpl_(pimpl)
 {
-public:
-    transaction_impl(connection_impl* pimpl)
-        : pimpl_(pimpl)
-    {
-        std::error_code ec;
-        pimpl_->auto_commit(false,ec);
-        update_error_code(ec);
-    }
-    ~transaction_impl()
-    {
-        std::error_code ec;
-        end(ec);
-    }
+    std::error_code ec;
+    pimpl_->auto_commit(false,ec);
+    update_error_code(ec);
+}
+transaction_impl::~transaction_impl()
+{
+    std::error_code ec;
+    end(ec);
+}
 
-    std::error_code error_code() const
-    {
-        return ec_;
-    }
+std::error_code transaction_impl::error_code() const
+{
+    return ec_;
+}
 
-    void update_error_code(std::error_code ec)
+void transaction_impl::update_error_code(std::error_code ec)
+{
+    if (ec)
     {
-        if (ec)
+        ec_ = ec;
+    }
+}
+
+void transaction_impl::end(std::error_code& ec)
+{
+    if (pimpl_ != nullptr)
+    {
+        if (ec_)
         {
-            ec_ = ec;
+            pimpl_->rollback(ec);
         }
-    }
-
-    void end(std::error_code& ec)
-    {
-        if (pimpl_ != nullptr)
+        else
         {
-            if (ec_)
-            {
-                pimpl_->rollback(ec);
-            }
-            else
-            {
-                pimpl_->commit(ec);
-            }
-            pimpl_ = nullptr;
+            pimpl_->commit(ec);
         }
+        pimpl_ = nullptr;
     }
-private:
-    connection_impl* pimpl_;
-    std::error_code ec_;
-};
+}
 
 // statement
 
@@ -461,47 +396,19 @@ public:
 
 // prepared_statement_impl
 
-class prepared_statement_impl
+prepared_statement_impl::prepared_statement_impl()
+    : hstmt_(nullptr)
 {
-public:
-    SQLHSTMT hstmt_; 
+}
 
-    prepared_statement_impl()
-        : hstmt_(nullptr)
-    {
-    }
-
-    prepared_statement_impl(SQLHSTMT hstmt)
-        : hstmt_(hstmt)
-    {
-    }
-
-    prepared_statement_impl(const prepared_statement_impl&) = delete;
-
-    prepared_statement_impl(prepared_statement_impl&&) = default;
-
-    ~prepared_statement_impl()
-    {
-        if (hstmt_) 
-        { 
-            SQLFreeHandle(SQL_HANDLE_STMT, hstmt_); 
-        } 
-    }
-
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                    const std::function<void(const row& rec)>& callback,
-                    std::error_code& ec);
-
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                    std::error_code& ec);
-
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                  transaction& t);
-};
+prepared_statement_impl::prepared_statement_impl(SQLHSTMT hstmt)
+    : hstmt_(hstmt)
+{
+}
 
 void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                                          const std::function<void(const row& rec)>& callback,
-                                          std::error_code& ec)
+                                       const std::function<void(const row& rec)>& callback,
+                                       std::error_code& ec)
 {
     RETCODE rc;
 
@@ -1045,7 +952,7 @@ void process_results(SQLHSTMT hstmt,
         return;
     }
     //std::cout << "numColumns = " << numColumns << std::endl;
-    std::vector<data_value_impl> values;
+    std::vector<value_impl> values;
     values.reserve(numColumns);
     if (numColumns > 0) 
     { 
@@ -1086,7 +993,7 @@ void process_results(SQLHSTMT hstmt,
 
             //std::wcout << std::wstring(&name[0],nameLength) << " columnSize: " << columnSize << " int32_t size: " << sizeof(int32_t) << std::endl;
             values.push_back(
-                data_value_impl(std::wstring(&name[0],nameLength),
+                value_impl(std::wstring(&name[0],nameLength),
                                 dataType,
                                 columnSize,
                                 decimalDigits,

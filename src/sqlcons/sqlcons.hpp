@@ -9,7 +9,7 @@
 #include <map>
 #include <array>
 #include <iostream>
-#include <sqlcons_connector/odbc/connector.hpp>
+#include <sqlcons_connector/odbc/connector_fwd.hpp>
 
 namespace sqlcons {
 
