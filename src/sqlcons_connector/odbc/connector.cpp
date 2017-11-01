@@ -1,6 +1,32 @@
 #include <sqlcons_connector/odbc/connector.hpp>
+#include <sqlcons_connector/odbc/connector_fwd.hpp>
 
 namespace sqlcons {
+
+/*
+template <>
+struct sql_type_traits<const char*>
+{
+    typedef std::string value_type;
+    static int sql_type_identifier() { return SQL_WVARCHAR; }
+    static int c_type_identifier() { return SQL_C_WCHAR; }
+};
+*/
+
+template<>
+int sql_type_traits<std::string>::sql_type_identifier() { return SQL_WVARCHAR; }
+template<>
+int sql_type_traits<std::string>::c_type_identifier() { return SQL_C_WCHAR; }
+
+template<>
+int sql_type_traits<int16_t>::sql_type_identifier() { return SQL_SMALLINT; }
+template<>
+int sql_type_traits<int16_t>::c_type_identifier() { return SQL_C_SSHORT; }
+
+template<>
+int sql_type_traits<int32_t>::sql_type_identifier() { return SQL_INTEGER; }
+template<>
+int sql_type_traits<int32_t>::c_type_identifier() { return SQL_C_SLONG; }
 
 void process_results(SQLHSTMT hstmt,
                      const std::function<void(const row& rec)>& callback,

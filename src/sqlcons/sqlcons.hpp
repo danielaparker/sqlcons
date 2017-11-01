@@ -17,140 +17,6 @@ namespace sqlcons {
 
 class connection;
 
-template <class T, class Enable=void>
-struct sql_type_traits
-{
-};
-
-struct sql_data_types
-{
-    static const int smallint_id;
-    static const int integer_id;
-    static const int string_id;
-};
-
-struct sql_c_data_types
-{
-    static const int smallint_id;
-    static const int integer_id;
-    static const int string_id;
-};
-
-// integral
-
-template<class T>
-struct sql_type_traits<T,
-                       typename std::enable_if<std::is_integral<T>::value &&
-                       std::is_signed<T>::value &&
-                       sizeof(T) == sizeof(int16_t) &&
-                       !std::is_same<T,bool>::value
->::type>
-{
-    typedef int16_t value_type;
-    static int sql_type_identifier() { return sql_data_types::smallint_id; }
-    static int c_type_identifier() { return sql_c_data_types::smallint_id; }
-};
-
-template<class T>
-struct sql_type_traits<T,
-                       typename std::enable_if<std::is_integral<T>::value &&
-                       std::is_signed<T>::value &&
-                       sizeof(T) == sizeof(int32_t) &&
-                       !std::is_same<T,bool>::value
->::type>
-{
-    typedef int64_t value_type;
-    static int sql_type_identifier() { return sql_data_types::integer_id; }
-    static int c_type_identifier() { return sql_c_data_types::integer_id; }
-};
-
-// std::string
-
-template <>
-struct sql_type_traits<std::string>
-{
-    typedef std::string value_type;
-    static int sql_type_identifier() { return sql_data_types::string_id; }
-    static int c_type_identifier() { return sql_c_data_types::string_id; }
-};
-
-template <>
-struct sql_type_traits<const char*>
-{
-    typedef std::string value_type;
-    static int sql_type_identifier() { return sql_data_types::string_id; }
-    static int c_type_identifier() { return sql_c_data_types::string_id; }
-};
-
-// conv_errc
-
-enum class sql_errc 
-{
-    db_err = 1,
-    E_01000,
-    E_01S02,
-    E_01001,
-    E_01003,
-    E_07002,
-    E_07006,
-    E_07007,
-    E_07S01,
-    E_08S01,
-    E_21S02,
-    E_22001,
-    E_22002,
-    E_22003,
-    E_22007,
-    E_22008,
-    E_22012,
-    E_22015,
-    E_22018,
-    E_22019,
-    E_22025,
-    E_23000,
-    E_24000,
-    E_40001,
-    E_40003,
-    E_42000,
-    E_44000,
-    E_HY000,
-    E_HY001,
-    E_HY008,
-    E_HY009,
-    E_HY010,
-    E_HY013,
-    E_HY024,
-    E_HY090,
-    E_HY092,
-    E_HY104,
-    E_HY117,
-    E_HYT01,
-    E_HYC00,
-    E_IM001,
-    E_IM017,
-    E_IM018,
-    E_42S22
-};
-
-class sqlcons_error_category_impl
-   : public std::error_category
-{
-public:
-    const char* name() const noexcept override
-    {
-        return "sqlcons.error";
-    }
-    std::string message(int ev) const override;
-};
-
-const std::error_category& sqlcons_error_category();
-
-std::error_code make_error_code(sql_errc result);
-
-
-template <class Tuple>
-using query_callback = std::function<void(const Tuple&)>;
-
 // value
 
 class value
@@ -190,7 +56,7 @@ struct base_parameter
 {
     base_parameter()
         : sql_type_identifier_(0),
-        c_type_identifier_(0)
+          c_type_identifier_(0)
     {
     }
     base_parameter(int sql_type_identifier,int c_type_identifier)
@@ -226,23 +92,19 @@ struct base_parameter
     int c_type_identifier_;
 };
 
+// parameter<T>
+
 template <class T>
 struct parameter : public base_parameter
 {
     parameter(int sql_type_identifier,int c_type_identifier, const T& val)
         : base_parameter(sql_type_identifier, c_type_identifier), 
-          value_(val), ind_(0)
+          value_(val)
     {
-        //std::cout << "sql_type_identifier: " << sql_type_identifier
-        //          << ", c_type_identifier: " << c_type_identifier
-        //          << ", sizeof(T): " << sizeof(T)
-        //          << ", val: " << val
-        //          << std::endl;
     }
 
     void* pvalue() override
     {
-        //std::cout << "pvalue() val: " << value_ << std::endl;
         return &value_;
     }
 
@@ -262,8 +124,9 @@ struct parameter : public base_parameter
     }
 
     T value_;
-    size_t ind_;
 };
+
+// parameter<std::string>
 
 template <>
 struct parameter<std::string> : public base_parameter
@@ -292,7 +155,6 @@ struct parameter<std::string> : public base_parameter
     }
 
     std::vector<wchar_t> value_;
-    size_t ind_;
 };
 
 // transaction

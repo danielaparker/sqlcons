@@ -3,14 +3,6 @@
 
 namespace sqlcons {
 
-const int sql_data_types::smallint_id = SQL_SMALLINT;
-const int sql_data_types::integer_id = SQL_INTEGER;
-const int sql_data_types::string_id = SQL_WVARCHAR;
-
-const int sql_c_data_types::smallint_id = SQL_C_SSHORT;
-const int sql_c_data_types::integer_id = SQL_C_SLONG;
-const int sql_c_data_types::string_id = SQL_C_WCHAR;
-
 // connection
 
 connection::connection() : pimpl_(new connection_impl()) {}
@@ -63,7 +55,6 @@ parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier,
     auto result1 = unicons::convert(val.begin(),val.end(),
                                     std::back_inserter(value_), 
                                     unicons::conv_flags::strict);
-    ind_ = value_.size();
     value_.push_back(0);
 }
 
