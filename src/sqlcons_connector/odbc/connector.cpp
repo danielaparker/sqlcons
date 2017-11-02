@@ -4,6 +4,12 @@
 namespace sqlcons {
 
 namespace odbc {
+// connector
+
+std::unique_ptr<connection_impl> connector::create_connection()
+{
+    return std::make_unique<odbc_connection_impl>();
+}
 }
 
 /*
@@ -177,14 +183,14 @@ public:
                  std::error_code& ec);
 };
 
-// connection_impl
+// odbc_connection_impl
 
-connection_impl::connection_impl()
+odbc_connection_impl::odbc_connection_impl()
     : henv_(nullptr), hdbc_(nullptr), autoCommit_(false)
 {
 }
 
-connection_impl::~connection_impl()
+odbc_connection_impl::~odbc_connection_impl()
 {
     if (hdbc_) 
     { 
@@ -198,7 +204,7 @@ connection_impl::~connection_impl()
     } 
 }
 
-void connection_impl::auto_commit(bool val, std::error_code& ec)
+void odbc_connection_impl::auto_commit(bool val, std::error_code& ec)
 {
     autoCommit_ = val;
 
@@ -223,7 +229,7 @@ void connection_impl::auto_commit(bool val, std::error_code& ec)
     }
 }
 
-void connection_impl::connection_timeout(size_t val, std::error_code& ec)
+void odbc_connection_impl::connection_timeout(size_t val, std::error_code& ec)
 {
     RETCODE rc;
 
@@ -237,7 +243,7 @@ void connection_impl::connection_timeout(size_t val, std::error_code& ec)
     }
 }
 
-void connection_impl::execute(const std::string& query, 
+void odbc_connection_impl::execute(const std::string& query, 
                                const std::function<void(const row& rec)>& callback,
                                std::error_code& ec)
 {
@@ -245,14 +251,14 @@ void connection_impl::execute(const std::string& query,
     q.execute(hdbc_,query,callback,ec);
 }
 
-void connection_impl::execute(const std::string& query, 
+void odbc_connection_impl::execute(const std::string& query, 
                                std::error_code& ec)
 {
     statement_impl q;
     q.execute(hdbc_,query,ec);
 }
 
-void connection_impl::open(const std::string& connString, bool autoCommit, std::error_code& ec)
+void odbc_connection_impl::open(const std::string& connString, bool autoCommit, std::error_code& ec)
 {
     autoCommit_ = autoCommit;
 
@@ -329,7 +335,7 @@ void connection_impl::open(const std::string& connString, bool autoCommit, std::
     }
 }
 
-std::unique_ptr<prepared_statement_impl> connection_impl::prepare_statement(const std::string& query, transaction& trans)
+std::unique_ptr<prepared_statement_impl> odbc_connection_impl::prepare_statement(const std::string& query, transaction& trans)
 {
     std::error_code ec;
     auto stat = prepare_statement(query,ec);
@@ -340,7 +346,7 @@ std::unique_ptr<prepared_statement_impl> connection_impl::prepare_statement(cons
     return stat;
 }
 
-std::unique_ptr<prepared_statement_impl> connection_impl::prepare_statement(const std::string& query, std::error_code& ec)
+std::unique_ptr<prepared_statement_impl> odbc_connection_impl::prepare_statement(const std::string& query, std::error_code& ec)
 {
     std::wstring wquery;
     auto result1 = unicons::convert(query.begin(), query.end(),
@@ -352,24 +358,24 @@ std::unique_ptr<prepared_statement_impl> connection_impl::prepare_statement(cons
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hdbc_, SQL_HANDLE_DBC, rc, ec);
-        return std::unique_ptr<prepared_statement_impl>();
+        return std::unique_ptr<odbc_prepared_statement_impl>();
     }
     rc = SQLPrepare(hstmt, &wquery[0], (SQLINTEGER)wquery.size()); 
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
-        return std::unique_ptr<prepared_statement_impl>();
+        return std::unique_ptr<odbc_prepared_statement_impl>();
     }
 
-    return std::make_unique<prepared_statement_impl>(hstmt);
+    return std::make_unique<odbc_prepared_statement_impl>(hstmt);
 }
 
-std::unique_ptr<transaction_impl> connection_impl::create_transaction()
+std::unique_ptr<transaction_impl> odbc_connection_impl::create_transaction()
 {
-    return std::make_unique<transaction_impl>(this);
+    return std::make_unique<odbc_transaction_impl>(this);
 }
 
-void connection_impl::commit(std::error_code& ec)
+void odbc_connection_impl::commit(std::error_code& ec)
 {
     if (!autoCommit_)
     {
@@ -382,7 +388,7 @@ void connection_impl::commit(std::error_code& ec)
     }
 }
 
-void connection_impl::rollback(std::error_code& ec)
+void odbc_connection_impl::rollback(std::error_code& ec)
 {
     if (!autoCommit_)
     {
@@ -552,27 +558,27 @@ public:
     }
 };
 
-// transaction_impl
+// odbc_transaction_impl
 
-transaction_impl::transaction_impl(connection_impl* pimpl)
+odbc_transaction_impl::odbc_transaction_impl(connection_impl* pimpl)
     : pimpl_(pimpl)
 {
     std::error_code ec;
     pimpl_->auto_commit(false,ec);
     update_error_code(ec);
 }
-transaction_impl::~transaction_impl()
+odbc_transaction_impl::~odbc_transaction_impl()
 {
     std::error_code ec;
     end(ec);
 }
 
-std::error_code transaction_impl::error_code() const
+std::error_code odbc_transaction_impl::error_code() const
 {
     return ec_;
 }
 
-void transaction_impl::update_error_code(std::error_code ec)
+void odbc_transaction_impl::update_error_code(std::error_code ec)
 {
     if (ec)
     {
@@ -580,7 +586,7 @@ void transaction_impl::update_error_code(std::error_code ec)
     }
 }
 
-void transaction_impl::end(std::error_code& ec)
+void odbc_transaction_impl::end(std::error_code& ec)
 {
     if (pimpl_ != nullptr)
     {
@@ -649,19 +655,19 @@ void statement_impl::execute(SQLHDBC hDbc,
     }
 }
 
-// prepared_statement_impl
+// odbc_prepared_statement_impl
 
-prepared_statement_impl::prepared_statement_impl()
+odbc_prepared_statement_impl::odbc_prepared_statement_impl()
     : hstmt_(nullptr)
 {
 }
 
-prepared_statement_impl::prepared_statement_impl(SQLHSTMT hstmt)
+odbc_prepared_statement_impl::odbc_prepared_statement_impl(SQLHSTMT hstmt)
     : hstmt_(hstmt)
 {
 }
 
-void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                        const std::function<void(const row& rec)>& callback,
                                        std::error_code& ec)
 {
@@ -705,7 +711,7 @@ void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_paramete
     process_results(hstmt_, callback, ec);
 }
 
-void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                                           std::error_code& ec)
 {
     RETCODE rc;
@@ -746,8 +752,8 @@ void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_paramete
     }
 }
 
-void prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                                          transaction& t)
+void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                                            transaction& t)
 {
     if (!t.error_code())
     {

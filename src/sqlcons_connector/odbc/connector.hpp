@@ -14,6 +14,7 @@
 #include <sqlcons/unicode_traits.hpp>
 #include <vector>
 #include <sstream>
+#include <sqlcons_connector/odbc/connector_fwd.hpp>
 #include <sqlcons/sqlcons.hpp>
 
 namespace sqlcons { 
@@ -83,74 +84,74 @@ const std::error_category& sqlcons_error_category();
 
 std::error_code make_error_code(sql_errc result);
 
-// connection_impl
+// odbc_connection_impl
 
-class connection_impl
+class odbc_connection_impl : public virtual connection_impl
 {
     bool autoCommit_;
 public:
     SQLHENV     henv_;
     SQLHDBC     hdbc_; 
 
-    connection_impl();
+    odbc_connection_impl();
 
-    ~connection_impl();
+    ~odbc_connection_impl();
 
-    void open(const std::string& connString, bool autoCommit, std::error_code& ec);
+    void open(const std::string& connString, bool autoCommit, std::error_code& ec) override;
 
-    void auto_commit(bool val, std::error_code& ec);
+    void auto_commit(bool val, std::error_code& ec) override;
 
-    void connection_timeout(size_t val, std::error_code& ec);
+    void connection_timeout(size_t val, std::error_code& ec) override;
 
-    std::unique_ptr<transaction_impl> create_transaction();
+    std::unique_ptr<transaction_impl> create_transaction() override;
 
-    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec);
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec) override;
 
-    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans);
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans) override;
 
-    void commit(std::error_code& ec);
-    void rollback(std::error_code& ec);
+    void commit(std::error_code& ec) override;
+    void rollback(std::error_code& ec) override;
     void execute(const std::string& query, 
-                 std::error_code& ec);
+                 std::error_code& ec) override;
     void execute(const std::string& query, 
                  const std::function<void(const row& rec)>& callback,
-                 std::error_code& ec);
+                 std::error_code& ec) override;
 };
 
-// transaction_impl
+// odbc_transaction_impl
 
-class transaction_impl
+class odbc_transaction_impl : public virtual transaction_impl
 {
     connection_impl* pimpl_;
     std::error_code ec_;
 public:
-    transaction_impl(connection_impl* pimpl);
+    odbc_transaction_impl(connection_impl* pimpl);
 
-    ~transaction_impl();
+    ~odbc_transaction_impl();
 
-    std::error_code error_code() const;
+    std::error_code error_code() const override;
 
-    void update_error_code(std::error_code ec);
+    void update_error_code(std::error_code ec) override;
 
-    void end(std::error_code& ec);
+    void end(std::error_code& ec) override;
 };
 
 
-// prepared_statement_impl
+// odbc_prepared_statement_impl
 
-class prepared_statement_impl
+class odbc_prepared_statement_impl : public virtual prepared_statement_impl
 {
     SQLHSTMT hstmt_; 
 public:
-    prepared_statement_impl();
+    odbc_prepared_statement_impl();
 
-    prepared_statement_impl(SQLHSTMT hstmt);
+    odbc_prepared_statement_impl(SQLHSTMT hstmt);
 
-    prepared_statement_impl(const prepared_statement_impl&) = delete;
+    odbc_prepared_statement_impl(const odbc_prepared_statement_impl&) = delete;
 
-    prepared_statement_impl(prepared_statement_impl&&) = default;
+    odbc_prepared_statement_impl(odbc_prepared_statement_impl&&) = default;
 
-    ~prepared_statement_impl()
+    ~odbc_prepared_statement_impl()
     {
         if (hstmt_) 
         { 
@@ -160,27 +161,14 @@ public:
 
     void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                     const std::function<void(const row& rec)>& callback,
-                    std::error_code& ec);
+                    std::error_code& ec) override;
 
     void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                    std::error_code& ec);
+                    std::error_code& ec) override;
 
     void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                  transaction& t);
+                  transaction& t) override;
 };
-
-namespace odbc {
-
-class connector
-{
-public:
-    static std::unique_ptr<connection_impl> create_connection()
-    {
-        return std::make_unique<connection_impl>();
-    }
-};
-
-}
 
 }
 
