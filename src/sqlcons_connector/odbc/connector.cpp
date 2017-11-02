@@ -717,18 +717,18 @@ void connection_impl::open(const std::string& connString, bool autoCommit, std::
     }
 }
 
-prepared_statement connection_impl::prepare_statement(const std::string& query, transaction& trans)
+std::unique_ptr<prepared_statement_impl> connection_impl::prepare_statement(const std::string& query, transaction& trans)
 {
     std::error_code ec;
-    prepared_statement stat = prepare_statement(query,ec);
+    auto stat = prepare_statement(query,ec);
     if (ec)
     {
         trans.update_error_code(ec);
     }
-    return std::move(stat);
+    return stat;
 }
 
-prepared_statement connection_impl::prepare_statement(const std::string& query, std::error_code& ec)
+std::unique_ptr<prepared_statement_impl> connection_impl::prepare_statement(const std::string& query, std::error_code& ec)
 {
     std::wstring wquery;
     auto result1 = unicons::convert(query.begin(), query.end(),
@@ -740,16 +740,16 @@ prepared_statement connection_impl::prepare_statement(const std::string& query, 
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hdbc_, SQL_HANDLE_DBC, rc, ec);
-        return prepared_statement();
+        return std::unique_ptr<prepared_statement_impl>();
     }
     rc = SQLPrepare(hstmt, &wquery[0], (SQLINTEGER)wquery.size()); 
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hstmt, SQL_HANDLE_STMT, rc, ec);
-        return prepared_statement();
+        return std::unique_ptr<prepared_statement_impl>();
     }
 
-    return prepared_statement(std::make_unique<prepared_statement_impl>(hstmt));
+    return std::make_unique<prepared_statement_impl>(hstmt);
 }
 
 void connection_impl::commit(std::error_code& ec)

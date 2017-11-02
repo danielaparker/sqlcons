@@ -1,3 +1,4 @@
+#include <sqlcons_connector/odbc/connector2.hpp>
 #include <sqlcons/sqlcons.hpp>
 #include <windows.h> 
 #include <sql.h> 

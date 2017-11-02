@@ -26,12 +26,12 @@ void connection::connection_timeout(size_t val, std::error_code& ec)
 
 prepared_statement connection::prepare_statement(const std::string& query, std::error_code& ec)
 {
-    return pimpl_->prepare_statement(query, ec);
+    return prepared_statement(pimpl_->prepare_statement(query, ec));
 }
 
 prepared_statement connection::prepare_statement(const std::string& query, transaction& trans)
 {
-    return pimpl_->prepare_statement(query, trans);
+    return prepared_statement(pimpl_->prepare_statement(query, trans));
 }
 
 void connection::execute(const std::string& query, 

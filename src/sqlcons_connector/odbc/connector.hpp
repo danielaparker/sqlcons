@@ -102,9 +102,9 @@ public:
 
     void connection_timeout(size_t val, std::error_code& ec);
 
-    prepared_statement prepare_statement(const std::string& query, std::error_code& ec);
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec);
 
-    prepared_statement prepare_statement(const std::string& query, transaction& trans);
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans);
 
     void commit(std::error_code& ec);
     void rollback(std::error_code& ec);
