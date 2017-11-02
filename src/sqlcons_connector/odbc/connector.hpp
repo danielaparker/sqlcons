@@ -1,5 +1,5 @@
-#ifndef SQLCONS_CONNECTOR_CONNECTOR_HPP
-#define SQLCONS_CONNECTOR_CONNECTOR_HPP
+#ifndef SQLCONSCONNECTOR_ODBC_CONNECTOR_HPP
+#define SQLCONSCONNECTOR_ODBC_CONNECTOR_HPP
 
 #include <windows.h> 
 //#include <sql.h> 
@@ -102,6 +102,8 @@ public:
 
     void connection_timeout(size_t val, std::error_code& ec);
 
+    std::unique_ptr<transaction_impl> create_transaction();
+
     std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec);
 
     std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans);
@@ -166,6 +168,19 @@ public:
     void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                   transaction& t);
 };
+
+namespace odbc {
+
+class connector
+{
+public:
+    static std::unique_ptr<connection_impl> create_connection()
+    {
+        return std::make_unique<connection_impl>();
+    }
+};
+
+}
 
 }
 

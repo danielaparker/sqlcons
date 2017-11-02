@@ -1,4 +1,4 @@
-#include <sqlcons_connector/odbc/connector2.hpp>
+#include <sqlcons_connector/odbc/connector.hpp>
 #include <sqlcons/sqlcons.hpp>
 #include <windows.h> 
 #include <sql.h> 
@@ -152,5 +152,20 @@ TEST_CASE("Prepared insert statement")
         return;
     }
 } 
+
+TEST_CASE("Transaction") 
+{
+    std::error_code ec;
+
+    sqlcons::connection connection;
+    connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    sqlcons::transaction trans = connection.create_transaction();
+}
 
 

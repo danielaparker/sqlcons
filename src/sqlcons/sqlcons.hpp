@@ -162,7 +162,8 @@ struct parameter<std::string> : public base_parameter
 class transaction
 {
 public:
-    transaction(connection& conn);
+    transaction(transaction&&) = default;
+    transaction(std::unique_ptr<transaction_impl>&& pimpl);
     ~transaction();
 
     std::error_code error_code() const;
@@ -204,9 +205,8 @@ struct sql_parameters_tuple_helper<0, base_parameter, Tuple>
 
 class prepared_statement
 {
-    friend class connection_impl;
 public:
-    prepared_statement();
+    prepared_statement() = delete;
     prepared_statement(prepared_statement&&) = default;
     prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl);
     ~prepared_statement();
@@ -266,10 +266,6 @@ private:
 class connection
 {
 public:
-    friend class transaction;
-    friend class statement;
-    friend class prepared_statement;
-
     connection();
     ~connection();
 
@@ -278,6 +274,8 @@ public:
     void auto_commit(bool val, std::error_code& ec);
 
     void connection_timeout(size_t val, std::error_code& ec);
+
+    transaction create_transaction();
 
     prepared_statement prepare_statement(const std::string& query, transaction& trans);
 

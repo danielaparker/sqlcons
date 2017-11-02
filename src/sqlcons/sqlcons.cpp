@@ -5,7 +5,7 @@ namespace sqlcons {
 
 // connection
 
-connection::connection() : pimpl_(new connection_impl()) {}
+connection::connection() : pimpl_(odbc::connector::create_connection()) {}
 
 connection::~connection() = default;
 
@@ -22,6 +22,11 @@ void connection::auto_commit(bool val, std::error_code& ec)
 void connection::connection_timeout(size_t val, std::error_code& ec)
 {
     pimpl_->connection_timeout(val, ec);
+}
+
+transaction connection::create_transaction()
+{
+    return transaction(pimpl_->create_transaction());
 }
 
 prepared_statement connection::prepare_statement(const std::string& query, std::error_code& ec)
@@ -60,8 +65,6 @@ parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier,
 
 // prepared_statement
 
-prepared_statement::prepared_statement() : pimpl_(new prepared_statement_impl()) {}
-
 prepared_statement::prepared_statement(std::unique_ptr<prepared_statement_impl>&& impl) : pimpl_(std::move(impl)) {}
 
 prepared_statement::~prepared_statement() = default;
@@ -83,6 +86,25 @@ void prepared_statement::execute_(std::vector<std::unique_ptr<base_parameter>>& 
                                   transaction& t)
 {
     pimpl_->execute_(bindings, t);
+}
+
+transaction::transaction(std::unique_ptr<transaction_impl>&& impl) : pimpl_(std::move(impl)) {}
+
+transaction::~transaction() = default;
+
+std::error_code transaction::error_code() const
+{
+    return pimpl_->error_code();
+}
+
+void transaction::update_error_code(std::error_code ec)
+{
+    pimpl_->update_error_code(ec);
+}
+
+void transaction::end(std::error_code& ec)
+{
+    pimpl_->end(ec);
 }
 
 // row
