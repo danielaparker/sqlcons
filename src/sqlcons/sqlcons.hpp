@@ -322,6 +322,7 @@ private:
 
 // connection
 
+template <class Connector>
 class connection
 {
 public:
@@ -353,6 +354,65 @@ public:
 private:
     std::unique_ptr<connection_impl> pimpl_;
 };
+
+// connection<Connector>
+
+template <class Connector>
+connection<Connector>::connection() : pimpl_(Connector::create_connection()) {}
+
+template <class Connector>
+connection<Connector>::~connection() = default;
+
+template <class Connector>
+void connection<Connector>::open(const std::string& connString, bool autoCommit, std::error_code& ec)
+{
+    pimpl_->open(connString, autoCommit, ec);
+}
+
+template <class Connector>
+void connection<Connector>::auto_commit(bool val, std::error_code& ec)
+{
+    pimpl_->auto_commit(val, ec);
+}
+
+template <class Connector>
+void connection<Connector>::connection_timeout(size_t val, std::error_code& ec)
+{
+    pimpl_->connection_timeout(val, ec);
+}
+
+template <class Connector>
+transaction connection<Connector>::create_transaction()
+{
+    return transaction(pimpl_->create_transaction());
+}
+
+template <class Connector>
+prepared_statement connection<Connector>::prepare_statement(const std::string& query, std::error_code& ec)
+{
+    return prepared_statement(pimpl_->prepare_statement(query, ec));
+}
+
+template <class Connector>
+prepared_statement connection<Connector>::prepare_statement(const std::string& query, transaction& trans)
+{
+    return prepared_statement(pimpl_->prepare_statement(query, trans));
+}
+
+template <class Connector>
+void connection<Connector>::execute(const std::string& query, 
+                                    std::error_code& ec)
+{
+    pimpl_->execute(query, ec);
+}
+
+template <class Connector>
+void connection<Connector>::execute(const std::string& query, 
+                         const std::function<void(const row& rec)>& callback,
+                         std::error_code& ec)
+{
+    pimpl_->execute(query, callback, ec);
+}
 
 }
 

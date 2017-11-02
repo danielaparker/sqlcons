@@ -3,55 +3,6 @@
 
 namespace sqlcons {
 
-// connection
-
-connection::connection() : pimpl_(odbc::connector::create_connection()) {}
-
-connection::~connection() = default;
-
-void connection::open(const std::string& connString, bool autoCommit, std::error_code& ec)
-{
-    pimpl_->open(connString, autoCommit, ec);
-}
-
-void connection::auto_commit(bool val, std::error_code& ec)
-{
-    pimpl_->auto_commit(val, ec);
-}
-
-void connection::connection_timeout(size_t val, std::error_code& ec)
-{
-    pimpl_->connection_timeout(val, ec);
-}
-
-transaction connection::create_transaction()
-{
-    return transaction(pimpl_->create_transaction());
-}
-
-prepared_statement connection::prepare_statement(const std::string& query, std::error_code& ec)
-{
-    return prepared_statement(pimpl_->prepare_statement(query, ec));
-}
-
-prepared_statement connection::prepare_statement(const std::string& query, transaction& trans)
-{
-    return prepared_statement(pimpl_->prepare_statement(query, trans));
-}
-
-void connection::execute(const std::string& query, 
-                         std::error_code& ec)
-{
-    pimpl_->execute(query, ec);
-}
-
-void connection::execute(const std::string& query, 
-                         const std::function<void(const row& rec)>& callback,
-                         std::error_code& ec)
-{
-    pimpl_->execute(query, callback, ec);
-}
-
 // parameter<std::string>
 
 parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier, const std::string& val)

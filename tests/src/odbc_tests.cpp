@@ -1,4 +1,4 @@
-#include <sqlcons_connector/odbc/connector.hpp>
+#include <sqlcons_connector/odbc/connector_fwd.hpp>
 #include <sqlcons/sqlcons.hpp>
 #include <windows.h> 
 #include <sql.h> 
@@ -20,7 +20,7 @@ TEST_CASE("odbc_tests")
 {
     std::error_code ec;
 
-    sqlcons::connection connection;
+    sqlcons::connection<sqlcons::odbc::connector> connection;
     connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
     if (ec)
     {
@@ -50,7 +50,7 @@ TEST_CASE("sqlcons::prepared_statement")
 {
     std::error_code ec;
 
-    sqlcons::connection connection;
+    sqlcons::connection<sqlcons::odbc::connector> connection;
     connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
     if (ec)
     {
@@ -89,7 +89,7 @@ TEST_CASE("sqlcons::prepared_statement_with_string_param")
 {
     std::error_code ec;
 
-    sqlcons::connection connection;
+    sqlcons::connection<sqlcons::odbc::connector> connection;
     connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
     if (ec)
     {
@@ -127,7 +127,7 @@ TEST_CASE("Prepared insert statement")
 {
     std::error_code ec;
 
-    sqlcons::connection connection;
+    sqlcons::connection<sqlcons::odbc::connector> connection;
     connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
     if (ec)
     {
@@ -157,7 +157,7 @@ TEST_CASE("Transaction")
 {
     std::error_code ec;
 
-    sqlcons::connection connection;
+    sqlcons::connection<sqlcons::odbc::connector> connection;
     connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
     if (ec)
     {
