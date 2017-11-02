@@ -13,112 +13,7 @@
 #include <vector>
 #include <sstream>
 
-namespace sqlcons {
-
-// odbc_connection_impl
-
-class odbc_connection_impl : public virtual connection_impl
-{
-    bool autoCommit_;
-public:
-    SQLHENV     henv_;
-    SQLHDBC     hdbc_; 
-
-    odbc_connection_impl();
-
-    ~odbc_connection_impl();
-
-    void open(const std::string& connString, bool autoCommit, std::error_code& ec) override;
-
-    void auto_commit(bool val, std::error_code& ec) override;
-
-    void connection_timeout(size_t val, std::error_code& ec) override;
-
-    std::unique_ptr<transaction_impl> create_transaction() override;
-
-    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec) override;
-
-    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans) override;
-
-    void commit(std::error_code& ec) override;
-    void rollback(std::error_code& ec) override;
-    void execute(const std::string& query, 
-                 std::error_code& ec) override;
-    void execute(const std::string& query, 
-                 const std::function<void(const row& rec)>& callback,
-                 std::error_code& ec) override;
-};
-
-// odbc_transaction_impl
-
-class odbc_transaction_impl : public virtual transaction_impl
-{
-    connection_impl* pimpl_;
-    std::error_code ec_;
-public:
-    odbc_transaction_impl(connection_impl* pimpl);
-
-    ~odbc_transaction_impl();
-
-    std::error_code error_code() const override;
-
-    void update_error_code(std::error_code ec) override;
-
-    void end(std::error_code& ec) override;
-};
-
-
-// odbc_prepared_statement_impl
-
-class odbc_prepared_statement_impl : public virtual prepared_statement_impl
-{
-    SQLHSTMT hstmt_; 
-public:
-    odbc_prepared_statement_impl();
-
-    odbc_prepared_statement_impl(SQLHSTMT hstmt);
-
-    odbc_prepared_statement_impl(const odbc_prepared_statement_impl&) = delete;
-
-    odbc_prepared_statement_impl(odbc_prepared_statement_impl&&) = default;
-
-    ~odbc_prepared_statement_impl()
-    {
-        if (hstmt_) 
-        { 
-            SQLFreeHandle(SQL_HANDLE_STMT, hstmt_); 
-        } 
-    }
-
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                    const std::function<void(const row& rec)>& callback,
-                    std::error_code& ec) override;
-
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                    std::error_code& ec) override;
-
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                  transaction& t) override;
-};
-
-namespace odbc {
-// connector
-
-std::unique_ptr<connection_impl> connector::create_connection()
-{
-    return std::make_unique<odbc_connection_impl>();
-}
-}
-
-/*
-template <>
-struct sql_type_traits<const char*>
-{
-    typedef std::string value_type;
-    static int sql_type_identifier() { return SQL_WVARCHAR; }
-    static int c_type_identifier() { return SQL_C_WCHAR; }
-};
-*/
+namespace sqlcons { 
 
 template<>
 int sql_type_traits<std::string>::sql_type_identifier() { return SQL_WVARCHAR; }
@@ -135,26 +30,17 @@ int sql_type_traits<int32_t>::sql_type_identifier() { return SQL_INTEGER; }
 template<>
 int sql_type_traits<int32_t>::c_type_identifier() { return SQL_C_SLONG; }
 
-void process_results(SQLHSTMT hstmt,
-                     const std::function<void(const row& rec)>& callback,
-                     std::error_code& ec);
-
-void handle_diagnostic_record(SQLHANDLE hHandle,
-                              SQLSMALLINT hType,
-                              RETCODE RetCode,
-                              std::error_code& ec);
-
 // sqlcons_error_category_impl
 
 const std::error_category& sqlcons_error_category()
 {
-  static sqlcons_error_category_impl instance;
-  return instance;
+    static sqlcons_error_category_impl instance;
+    return instance;
 }
 
 std::error_code make_error_code(sql_errc result)
 {
-    return std::error_code(static_cast<int>(result),sqlcons_error_category());
+    return std::error_code(static_cast<int>(result), sqlcons_error_category());
 }
 
 std::string sqlcons_error_category_impl::message(int ev) const
@@ -251,6 +137,121 @@ std::string sqlcons_error_category_impl::message(int ev) const
         return "db error";
     }
 }
+
+namespace odbc {
+
+// odbc_connection_impl
+
+class odbc_connection_impl : public virtual connection_impl
+{
+    bool autoCommit_;
+public:
+    SQLHENV     henv_;
+    SQLHDBC     hdbc_; 
+
+    odbc_connection_impl();
+
+    ~odbc_connection_impl();
+
+    void open(const std::string& connString, bool autoCommit, std::error_code& ec) override;
+
+    void auto_commit(bool val, std::error_code& ec) override;
+
+    void connection_timeout(size_t val, std::error_code& ec) override;
+
+    std::unique_ptr<transaction_impl> create_transaction() override;
+
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec) override;
+
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans) override;
+
+    void commit(std::error_code& ec) override;
+    void rollback(std::error_code& ec) override;
+    void execute(const std::string& query, 
+                 std::error_code& ec) override;
+    void execute(const std::string& query, 
+                 const std::function<void(const row& rec)>& callback,
+                 std::error_code& ec) override;
+};
+
+// odbc_transaction_impl
+
+class odbc_transaction_impl : public virtual transaction_impl
+{
+    connection_impl* pimpl_;
+    std::error_code ec_;
+public:
+    odbc_transaction_impl(connection_impl* pimpl);
+
+    ~odbc_transaction_impl();
+
+    std::error_code error_code() const override;
+
+    void update_error_code(std::error_code ec) override;
+
+    void end(std::error_code& ec) override;
+};
+
+
+// odbc_prepared_statement_impl
+
+class odbc_prepared_statement_impl : public virtual prepared_statement_impl
+{
+    SQLHSTMT hstmt_; 
+public:
+    odbc_prepared_statement_impl();
+
+    odbc_prepared_statement_impl(SQLHSTMT hstmt);
+
+    odbc_prepared_statement_impl(const odbc_prepared_statement_impl&) = delete;
+
+    odbc_prepared_statement_impl(odbc_prepared_statement_impl&&) = default;
+
+    ~odbc_prepared_statement_impl()
+    {
+        if (hstmt_) 
+        { 
+            SQLFreeHandle(SQL_HANDLE_STMT, hstmt_); 
+        } 
+    }
+
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                    const std::function<void(const row& rec)>& callback,
+                    std::error_code& ec) override;
+
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                    std::error_code& ec) override;
+
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                  transaction& t) override;
+};
+
+// odbc_connector
+
+std::unique_ptr<connection_impl> odbc_connector::create_connection()
+{
+    return std::make_unique<odbc_connection_impl>();
+}
+
+/*
+template <>
+struct sql_type_traits<const char*>
+{
+    typedef std::string value_type;
+    static int sql_type_identifier() { return SQL_WVARCHAR; }
+    static int c_type_identifier() { return SQL_C_WCHAR; }
+};
+*/
+
+void process_results(SQLHSTMT hstmt,
+                     const std::function<void(const row& rec)>& callback,
+                     std::error_code& ec);
+
+void handle_diagnostic_record(SQLHANDLE hHandle,
+                              SQLSMALLINT hType,
+                              RETCODE RetCode,
+                              std::error_code& ec);
+
 
 // statement_impl
 
@@ -1230,4 +1231,4 @@ void process_results(SQLHSTMT hstmt,
     }
 }
 
-}
+}}

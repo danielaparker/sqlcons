@@ -71,7 +71,7 @@ const std::error_category& sqlcons_error_category();
 std::error_code make_error_code(sql_errc result);
 
 namespace odbc {
-class connector
+class odbc_connector
 {
 public:
     static std::unique_ptr<connection_impl> create_connection();
