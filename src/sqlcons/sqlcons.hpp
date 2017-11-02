@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <iostream>
+#include <sqlcons/unicode_traits.hpp>
 
 namespace sqlcons {
 

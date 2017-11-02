@@ -1,7 +1,105 @@
 #include <sqlcons_connector/odbc/connector.hpp>
-#include <sqlcons_connector/odbc/connector_fwd.hpp>
+#include <windows.h> 
+//#include <sql.h> 
+#define UNICODE  
+#include <string> 
+#include <sqlext.h> 
+#include <stdio.h> 
+#include <conio.h> 
+#include <tchar.h> 
+#include <stdlib.h> 
+#include <iostream>
+#include <sqlcons/unicode_traits.hpp>
+#include <vector>
+#include <sstream>
 
 namespace sqlcons {
+
+// odbc_connection_impl
+
+class odbc_connection_impl : public virtual connection_impl
+{
+    bool autoCommit_;
+public:
+    SQLHENV     henv_;
+    SQLHDBC     hdbc_; 
+
+    odbc_connection_impl();
+
+    ~odbc_connection_impl();
+
+    void open(const std::string& connString, bool autoCommit, std::error_code& ec) override;
+
+    void auto_commit(bool val, std::error_code& ec) override;
+
+    void connection_timeout(size_t val, std::error_code& ec) override;
+
+    std::unique_ptr<transaction_impl> create_transaction() override;
+
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec) override;
+
+    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans) override;
+
+    void commit(std::error_code& ec) override;
+    void rollback(std::error_code& ec) override;
+    void execute(const std::string& query, 
+                 std::error_code& ec) override;
+    void execute(const std::string& query, 
+                 const std::function<void(const row& rec)>& callback,
+                 std::error_code& ec) override;
+};
+
+// odbc_transaction_impl
+
+class odbc_transaction_impl : public virtual transaction_impl
+{
+    connection_impl* pimpl_;
+    std::error_code ec_;
+public:
+    odbc_transaction_impl(connection_impl* pimpl);
+
+    ~odbc_transaction_impl();
+
+    std::error_code error_code() const override;
+
+    void update_error_code(std::error_code ec) override;
+
+    void end(std::error_code& ec) override;
+};
+
+
+// odbc_prepared_statement_impl
+
+class odbc_prepared_statement_impl : public virtual prepared_statement_impl
+{
+    SQLHSTMT hstmt_; 
+public:
+    odbc_prepared_statement_impl();
+
+    odbc_prepared_statement_impl(SQLHSTMT hstmt);
+
+    odbc_prepared_statement_impl(const odbc_prepared_statement_impl&) = delete;
+
+    odbc_prepared_statement_impl(odbc_prepared_statement_impl&&) = default;
+
+    ~odbc_prepared_statement_impl()
+    {
+        if (hstmt_) 
+        { 
+            SQLFreeHandle(SQL_HANDLE_STMT, hstmt_); 
+        } 
+    }
+
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                    const std::function<void(const row& rec)>& callback,
+                    std::error_code& ec) override;
+
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                    std::error_code& ec) override;
+
+    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                  transaction& t) override;
+};
 
 namespace odbc {
 // connector
