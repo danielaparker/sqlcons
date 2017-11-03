@@ -14,31 +14,6 @@ parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier,
     value_.push_back(0);
 }
 
-// prepared_statement
-
-prepared_statement::prepared_statement(std::unique_ptr<prepared_statement_impl>&& impl) : pimpl_(std::move(impl)) {}
-
-prepared_statement::~prepared_statement() = default;
-
-void prepared_statement::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                                        const std::function<void(const row& rec)>& callback,
-                                        std::error_code& ec)
-{
-    pimpl_->execute_(bindings, callback, ec);
-}
-
-void prepared_statement::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                                        std::error_code& ec)
-{
-    pimpl_->execute_(bindings, ec);
-}
-
-void prepared_statement::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
-                                  transaction& t)
-{
-    pimpl_->execute_(bindings, t);
-}
-
 transaction::transaction(std::unique_ptr<transaction_impl>&& impl) : pimpl_(std::move(impl)) {}
 
 transaction::~transaction() = default;

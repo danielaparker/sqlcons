@@ -58,7 +58,7 @@ TEST_CASE("sqlcons::prepared_statement")
         return;
     }
 
-    sqlcons::prepared_statement statement = connection.prepare_statement(
+    auto statement = connection.prepare_statement(
         "select instrument_id, observation_date, price from instrument_price where instrument_id = ?",
         ec);
     if (ec)
@@ -97,7 +97,7 @@ TEST_CASE("sqlcons::prepared_statement_with_string_param")
         return;
     }
 
-    sqlcons::prepared_statement statement = connection.prepare_statement(
+    auto statement = connection.prepare_statement(
         "select instrument_id, contract_date from futures_contract where product_id = ?",
         ec);
     if (ec)
@@ -135,7 +135,7 @@ TEST_CASE("Prepared insert statement")
         return;
     }
 
-    sqlcons::prepared_statement statement = connection.prepare_statement(
+    auto statement = connection.prepare_statement(
         "INSERT INTO futures_contract(product_id,contract_date) VALUES(?,?)",
         ec);
     if (ec)

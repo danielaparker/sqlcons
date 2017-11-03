@@ -247,8 +247,8 @@ struct sql_parameters_tuple_helper
     static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<base_parameter>>& bindings)
     {
         bindings[Pos - 1] = std::make_unique<parameter<element_type>>(sql_type_traits<element_type>::sql_type_identifier(), 
-                                                                                                            sql_type_traits<element_type>::c_type_identifier(),
-                                                                                                            std::get<Pos-1>(tuple));
+                                                                      sql_type_traits<element_type>::c_type_identifier(),
+                                                                      std::get<Pos-1>(tuple));
         next::to_parameters(tuple, bindings);
     }
 };
@@ -263,6 +263,7 @@ struct sql_parameters_tuple_helper<0, base_parameter, Tuple>
 
 }
 
+template <class Connector>
 class prepared_statement
 {
 public:
@@ -321,6 +322,36 @@ private:
     std::unique_ptr<prepared_statement_impl> pimpl_;
 };
 
+// prepared_statement
+
+template <class Connector>
+prepared_statement<Connector>::prepared_statement(std::unique_ptr<prepared_statement_impl>&& impl) : pimpl_(std::move(impl)) {}
+
+template <class Connector>
+prepared_statement<Connector>::~prepared_statement() = default;
+
+template <class Connector>
+void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                                        const std::function<void(const row& rec)>& callback,
+                                        std::error_code& ec)
+{
+    pimpl_->execute_(bindings, callback, ec);
+}
+
+template <class Connector>
+void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                                        std::error_code& ec)
+{
+    pimpl_->execute_(bindings, ec);
+}
+
+template <class Connector>
+void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+                                  transaction& t)
+{
+    pimpl_->execute_(bindings, t);
+}
+
 // connection
 
 template <class Connector>
@@ -338,9 +369,9 @@ public:
 
     transaction create_transaction();
 
-    prepared_statement prepare_statement(const std::string& query, transaction& trans);
+    prepared_statement<Connector> prepare_statement(const std::string& query, transaction& trans);
 
-    prepared_statement prepare_statement(const std::string& query, std::error_code& ec);
+    prepared_statement<Connector> prepare_statement(const std::string& query, std::error_code& ec);
 
     void commit(std::error_code& ec);
 
@@ -389,15 +420,15 @@ transaction connection<Connector>::create_transaction()
 }
 
 template <class Connector>
-prepared_statement connection<Connector>::prepare_statement(const std::string& query, std::error_code& ec)
+prepared_statement<Connector> connection<Connector>::prepare_statement(const std::string& query, std::error_code& ec)
 {
-    return prepared_statement(pimpl_->prepare_statement(query, ec));
+    return prepared_statement<Connector>(pimpl_->prepare_statement(query, ec));
 }
 
 template <class Connector>
-prepared_statement connection<Connector>::prepare_statement(const std::string& query, transaction& trans)
+prepared_statement<Connector> connection<Connector>::prepare_statement(const std::string& query, transaction& trans)
 {
-    return prepared_statement(pimpl_->prepare_statement(query, trans));
+    return prepared_statement<Connector>(pimpl_->prepare_statement(query, trans));
 }
 
 template <class Connector>
