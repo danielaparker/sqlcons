@@ -16,129 +16,129 @@
 namespace sqlcons { 
 
 template<>
-int sql_type_traits<std::string>::sql_type_identifier() { return SQL_WVARCHAR; }
+int sql_type_traits<odbc::odbc_connector,std::string>::sql_type_identifier() { return SQL_WVARCHAR; }
 template<>
-int sql_type_traits<std::string>::c_type_identifier() { return SQL_C_WCHAR; }
+int sql_type_traits<odbc::odbc_connector,std::string>::c_type_identifier() { return SQL_C_WCHAR; }
 
 template<>
-int sql_type_traits<int16_t>::sql_type_identifier() { return SQL_SMALLINT; }
+int sql_type_traits<odbc::odbc_connector,int16_t>::sql_type_identifier() { return SQL_SMALLINT; }
 template<>
-int sql_type_traits<int16_t>::c_type_identifier() { return SQL_C_SSHORT; }
+int sql_type_traits<odbc::odbc_connector,int16_t>::c_type_identifier() { return SQL_C_SSHORT; }
 
 template<>
-int sql_type_traits<int32_t>::sql_type_identifier() { return SQL_INTEGER; }
+int sql_type_traits<odbc::odbc_connector,int32_t>::sql_type_identifier() { return SQL_INTEGER; }
 template<>
-int sql_type_traits<int32_t>::c_type_identifier() { return SQL_C_SLONG; }
+int sql_type_traits<odbc::odbc_connector,int32_t>::c_type_identifier() { return SQL_C_SLONG; }
 
-// sqlcons_error_category_impl
+namespace odbc {
 
-const std::error_category& sqlcons_error_category()
+// odbc_error_category_impl
+
+const std::error_category& odbc_error_category()
 {
-    static sqlcons_error_category_impl instance;
+    static odbc_error_category_impl instance;
     return instance;
 }
 
-std::error_code make_error_code(sql_errc result)
+std::error_code make_error_code(odbc_errc result)
 {
-    return std::error_code(static_cast<int>(result), sqlcons_error_category());
+    return std::error_code(static_cast<int>(result), odbc_error_category());
 }
 
-std::string sqlcons_error_category_impl::message(int ev) const
+std::string odbc_error_category_impl::message(int ev) const
 {
-    switch (static_cast<sql_errc>(ev))
+    switch (static_cast<odbc_errc>(ev))
     {
-    case sql_errc::E_01000:
+    case odbc_errc::E_01000:
         return "[01000] General warning";
-    case sql_errc::E_01S02:
+    case odbc_errc::E_01S02:
         return "[01S02] Option value changed";
-    case sql_errc::E_01001:
+    case odbc_errc::E_01001:
         return "[01001] Cursor operation conflict";
-    case sql_errc::E_01003:
+    case odbc_errc::E_01003:
         return "[01003] Cursor operation conflict";
-    case sql_errc::E_07002:
+    case odbc_errc::E_07002:
         return "[07002] COUNT field incorrect";
-    case sql_errc::E_07006:
+    case odbc_errc::E_07006:
         return "[07006] Restricted data type attribute violation";
-    case sql_errc::E_07007:
+    case odbc_errc::E_07007:
         return "[07007] Restricted parameter value violation";
-    case sql_errc::E_07S01:
+    case odbc_errc::E_07S01:
         return "[07S01] Invalid use of default parameter";
-    case sql_errc::E_08S01:
+    case odbc_errc::E_08S01:
         return "[08S01] Communication link failure";
-    case sql_errc::E_21S02:
+    case odbc_errc::E_21S02:
         return "[21S02] Degree of derived table does not match column list";
-    case sql_errc::E_22001:
+    case odbc_errc::E_22001:
         return "[22001] String data, right truncation";
-    case sql_errc::E_22002:
+    case odbc_errc::E_22002:
         return "[22002] Indicator variable required but not supplied";
-    case sql_errc::E_22003:
+    case odbc_errc::E_22003:
         return "[22003] Numeric value out of range";
-    case sql_errc::E_22007:
+    case odbc_errc::E_22007:
         return "[22007] Invalid datetime format";
-    case sql_errc::E_22008:
+    case odbc_errc::E_22008:
         return "Datetime field overflow";
-    case sql_errc::E_22012:
+    case odbc_errc::E_22012:
         return "[22012] Division by zero";
-    case sql_errc::E_22015:
+    case odbc_errc::E_22015:
         return "[22015] Interval field overflow";
-    case sql_errc::E_22018:
+    case odbc_errc::E_22018:
         return "[22018] Interval field overflowInvalid character value for cast specification";
-    case sql_errc::E_22019:
+    case odbc_errc::E_22019:
         return "[22019] Invalid escape character";
-    case sql_errc::E_22025:
+    case odbc_errc::E_22025:
         return "[22025] Invalid escape sequence";
-    case sql_errc::E_23000:
+    case odbc_errc::E_23000:
         return "[23000] Integrity constraint violation";
-    case sql_errc::E_24000:
+    case odbc_errc::E_24000:
         return "[24000] Invalid cursor state";
-    case sql_errc::E_40001:
+    case odbc_errc::E_40001:
         return "[40001] Serialization failure";
-    case sql_errc::E_40003:
+    case odbc_errc::E_40003:
         return "[40003] Statement completion unknown";
-    case sql_errc::E_42000:
+    case odbc_errc::E_42000:
         return "[42000] Syntax error or access violation";
-    case sql_errc::E_44000:
+    case odbc_errc::E_44000:
         return "[44000] WITH CHECK OPTION violation";
-    case sql_errc::E_HY000:
+    case odbc_errc::E_HY000:
         return "[HY000] General error";
-    case sql_errc::E_HY001:
+    case odbc_errc::E_HY001:
         return "[HY001] Memory allocation error";
-    case sql_errc::E_HY008:
+    case odbc_errc::E_HY008:
         return "[HY008] Operation canceled";
-    case sql_errc::E_HY009:
+    case odbc_errc::E_HY009:
         return "[HY009] Invalid use of null pointer";
-    case sql_errc::E_HY010:
+    case odbc_errc::E_HY010:
         return "[HY010] Function sequence error";
-    case sql_errc::E_HY013:
+    case odbc_errc::E_HY013:
         return "[HY013] Memory management error";
-    case sql_errc::E_HY024:
+    case odbc_errc::E_HY024:
         return "[HY024] Invalid attribute value";
-    case sql_errc::E_HY090:
+    case odbc_errc::E_HY090:
         return "[HY090] Invalid string or buffer length";
-    case sql_errc::E_HY092:
+    case odbc_errc::E_HY092:
         return "[HY092] Invalid attribute/option identifier";
-    case sql_errc::E_HY104:
+    case odbc_errc::E_HY104:
         return "[HY104] Invalid precision or scale value";
-    case sql_errc::E_HY117:
+    case odbc_errc::E_HY117:
         return "[HY117] Connection is suspended due to unknown transaction state";
-    case sql_errc::E_HYT01:
+    case odbc_errc::E_HYT01:
         return "[HYT01] Connection timeout expired";
-    case sql_errc::E_HYC00:
+    case odbc_errc::E_HYC00:
         return "[HYC00] Optional feature not implemented";
-    case sql_errc::E_IM001:
+    case odbc_errc::E_IM001:
         return "[IM001] Driver does not support this function";
-    case sql_errc::E_IM017:
+    case odbc_errc::E_IM017:
         return "[IM017] Polling is disabled in asynchronous notification mode";
-    case sql_errc::E_IM018:
+    case odbc_errc::E_IM018:
         return "[IM018] SQLCompleteAsync has not been called to complete the previous asynchronous operation on this handle. If the previous function call on the handle returns SQL_STILL_EXECUTING and if notification mode is enabled, SQLCompleteAsync must be called on the handle to do post-processing and complete the operation";
-    case sql_errc::E_42S22:
+    case odbc_errc::E_42S22:
         return "[E_42S22] Column not found";
     default:
         return "db error";
     }
 }
-
-namespace odbc {
 
 // odbc_connection_impl
 
@@ -232,16 +232,6 @@ std::unique_ptr<connection_impl> odbc_connector::create_connection()
 {
     return std::make_unique<odbc_connection_impl>();
 }
-
-/*
-template <>
-struct sql_type_traits<const char*>
-{
-    typedef std::string value_type;
-    static int sql_type_identifier() { return SQL_WVARCHAR; }
-    static int c_type_identifier() { return SQL_C_WCHAR; }
-};
-*/
 
 void process_results(SQLHSTMT hstmt,
                      const std::function<void(const row& rec)>& callback,
@@ -366,7 +356,7 @@ void odbc_connection_impl::open(const std::string& connString, bool autoCommit, 
                                 &henv_);
     if (rc == SQL_ERROR)
     {
-        ec = make_error_code(sql_errc::db_err);
+        ec = make_error_code(odbc_errc::db_err);
         return;
     }
 
@@ -481,7 +471,7 @@ void odbc_connection_impl::commit(std::error_code& ec)
         RETCODE rc = SQLEndTran (SQL_HANDLE_DBC, hdbc_, SQL_COMMIT);
         if (rc == SQL_ERROR)
         {
-            ec = make_error_code(sql_errc::db_err);
+            ec = make_error_code(odbc_errc::db_err);
             return;
         }
     }
@@ -494,7 +484,7 @@ void odbc_connection_impl::rollback(std::error_code& ec)
         RETCODE rc = SQLEndTran (SQL_HANDLE_DBC, hdbc_, SQL_ROLLBACK);
         if (rc == SQL_ERROR)
         {
-            ec = make_error_code(sql_errc::db_err);
+            ec = make_error_code(odbc_errc::db_err);
             return;
         }
     }
@@ -874,59 +864,59 @@ struct compare_states
 
 struct odbc_error_codes
 {
-    std::map<const wchar_t*,sql_errc,compare_states> code_map;
+    std::map<const wchar_t*,odbc_errc,compare_states> code_map;
 
     odbc_error_codes()
     {
-        code_map[L"01000"] = sql_errc::E_01000;
-        code_map[L"01S02"] = sql_errc::E_01S02; 
-        code_map[L"01001"] = sql_errc::E_01001;
-        code_map[L"01003"] = sql_errc::E_01003;
-        code_map[L"07002"] = sql_errc::E_07002;
-        code_map[L"07006"] = sql_errc::E_07006;
-        code_map[L"07007"] = sql_errc::E_07007;
-        code_map[L"07S01"] = sql_errc::E_07S01;
-        code_map[L"08S01"] = sql_errc::E_08S01;
-        code_map[L"21S02"] = sql_errc::E_21S02;
-        code_map[L"22001"] = sql_errc::E_22001;
-        code_map[L"22002"] = sql_errc::E_22002;
-        code_map[L"22003"] = sql_errc::E_22003;
-        code_map[L"22007"] = sql_errc::E_22007;
-        code_map[L"22008"] = sql_errc::E_22008;
-        code_map[L"22012"] = sql_errc::E_22012;
-        code_map[L"22015"] = sql_errc::E_22015;
-        code_map[L"22018"] = sql_errc::E_22018;
-        code_map[L"22019"] = sql_errc::E_22019;
-        code_map[L"22025"] = sql_errc::E_22025;
-        code_map[L"23000"] = sql_errc::E_23000;
-        code_map[L"24000"] = sql_errc::E_24000;
-        code_map[L"40001"] = sql_errc::E_40001;
-        code_map[L"40003"] = sql_errc::E_40003;
-        code_map[L"42000"] = sql_errc::E_42000;
-        code_map[L"44000"] = sql_errc::E_44000;
-        code_map[L"HY000"] = sql_errc::E_HY000;
-        code_map[L"HY001"] = sql_errc::E_HY001;
-        code_map[L"HY008"] = sql_errc::E_HY008;
-        code_map[L"HY009"] = sql_errc::E_HY009; //
-        code_map[L"HY010"] = sql_errc::E_HY010;
-        code_map[L"HY013"] = sql_errc::E_HY013;
-        code_map[L"HY024"] = sql_errc::E_HY024; //
-        code_map[L"HY090"] = sql_errc::E_HY090; //
-        code_map[L"HY092"] = sql_errc::E_HY092; //
-        code_map[L"HY104"] = sql_errc::E_HY104;
-        code_map[L"HY117"] = sql_errc::E_HY117;
-        code_map[L"HYT01"] = sql_errc::E_HYT01;
-        code_map[L"HYC00"] = sql_errc::E_HYC00; //
-        code_map[L"IM001"] = sql_errc::E_IM001;
-        code_map[L"IM017"] = sql_errc::E_IM017;
-        code_map[L"IM018"] = sql_errc::E_IM018;
-        code_map[L"42S22"] = sql_errc::E_42S22;
+        code_map[L"01000"] = odbc_errc::E_01000;
+        code_map[L"01S02"] = odbc_errc::E_01S02; 
+        code_map[L"01001"] = odbc_errc::E_01001;
+        code_map[L"01003"] = odbc_errc::E_01003;
+        code_map[L"07002"] = odbc_errc::E_07002;
+        code_map[L"07006"] = odbc_errc::E_07006;
+        code_map[L"07007"] = odbc_errc::E_07007;
+        code_map[L"07S01"] = odbc_errc::E_07S01;
+        code_map[L"08S01"] = odbc_errc::E_08S01;
+        code_map[L"21S02"] = odbc_errc::E_21S02;
+        code_map[L"22001"] = odbc_errc::E_22001;
+        code_map[L"22002"] = odbc_errc::E_22002;
+        code_map[L"22003"] = odbc_errc::E_22003;
+        code_map[L"22007"] = odbc_errc::E_22007;
+        code_map[L"22008"] = odbc_errc::E_22008;
+        code_map[L"22012"] = odbc_errc::E_22012;
+        code_map[L"22015"] = odbc_errc::E_22015;
+        code_map[L"22018"] = odbc_errc::E_22018;
+        code_map[L"22019"] = odbc_errc::E_22019;
+        code_map[L"22025"] = odbc_errc::E_22025;
+        code_map[L"23000"] = odbc_errc::E_23000;
+        code_map[L"24000"] = odbc_errc::E_24000;
+        code_map[L"40001"] = odbc_errc::E_40001;
+        code_map[L"40003"] = odbc_errc::E_40003;
+        code_map[L"42000"] = odbc_errc::E_42000;
+        code_map[L"44000"] = odbc_errc::E_44000;
+        code_map[L"HY000"] = odbc_errc::E_HY000;
+        code_map[L"HY001"] = odbc_errc::E_HY001;
+        code_map[L"HY008"] = odbc_errc::E_HY008;
+        code_map[L"HY009"] = odbc_errc::E_HY009; //
+        code_map[L"HY010"] = odbc_errc::E_HY010;
+        code_map[L"HY013"] = odbc_errc::E_HY013;
+        code_map[L"HY024"] = odbc_errc::E_HY024; //
+        code_map[L"HY090"] = odbc_errc::E_HY090; //
+        code_map[L"HY092"] = odbc_errc::E_HY092; //
+        code_map[L"HY104"] = odbc_errc::E_HY104;
+        code_map[L"HY117"] = odbc_errc::E_HY117;
+        code_map[L"HYT01"] = odbc_errc::E_HYT01;
+        code_map[L"HYC00"] = odbc_errc::E_HYC00; //
+        code_map[L"IM001"] = odbc_errc::E_IM001;
+        code_map[L"IM017"] = odbc_errc::E_IM017;
+        code_map[L"IM018"] = odbc_errc::E_IM018;
+        code_map[L"42S22"] = odbc_errc::E_42S22;
     }
 
     std::error_code get_error_code(const wchar_t* state)
     {
         auto it = code_map.find(state);
-        sql_errc ec = (it == code_map.end()) ? sql_errc::db_err : it->second;
+        odbc_errc ec = (it == code_map.end()) ? odbc_errc::db_err : it->second;
         return make_error_code(ec);
     }
 };
@@ -955,7 +945,7 @@ void handle_diagnostic_record(SQLHANDLE      hHandle,
  
     if (RetCode == SQL_INVALID_HANDLE) 
     { 
-        ec = make_error_code(sql_errc::db_err);
+        ec = make_error_code(odbc_errc::db_err);
         fwprintf(stderr, L"Invalid handle!\n"); 
         return; 
     } 
@@ -1213,7 +1203,7 @@ void process_results(SQLHSTMT hstmt,
             rc = SQLFetch(hstmt);
             if (rc == SQL_ERROR)
             {
-                ec = make_error_code(sql_errc::db_err);
+                ec = make_error_code(odbc_errc::db_err);
                 return;
             }
             if (rc == SQL_SUCCESS) 

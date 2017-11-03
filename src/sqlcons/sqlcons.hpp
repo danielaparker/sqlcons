@@ -108,7 +108,7 @@ struct base_parameter
     int c_type_identifier_;
 };
 
-template <class T>
+template <class Connector, class T>
 struct sql_type_traits
 {
     typedef T value_type;
@@ -238,23 +238,23 @@ struct parameter<std::string> : public base_parameter
 namespace detail
 {
 
-template<size_t Pos, class base_parameter, class Tuple>
+template<class Connector, size_t Pos, class base_parameter, class Tuple>
 struct sql_parameters_tuple_helper
 {
     using element_type = typename std::tuple_element<Pos - 1, Tuple>::type;
-    using next = sql_parameters_tuple_helper<Pos - 1, base_parameter, Tuple>;
+    using next = sql_parameters_tuple_helper<Connector, Pos - 1, base_parameter, Tuple>;
 
     static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<base_parameter>>& bindings)
     {
-        bindings[Pos - 1] = std::make_unique<parameter<element_type>>(sql_type_traits<element_type>::sql_type_identifier(), 
-                                                                      sql_type_traits<element_type>::c_type_identifier(),
+        bindings[Pos - 1] = std::make_unique<parameter<element_type>>(sql_type_traits<Connector,element_type>::sql_type_identifier(), 
+                                                                      sql_type_traits<Connector,element_type>::c_type_identifier(),
                                                                       std::get<Pos-1>(tuple));
         next::to_parameters(tuple, bindings);
     }
 };
 
-template<class base_parameter, class Tuple>
-struct sql_parameters_tuple_helper<0, base_parameter, Tuple>
+template<class Connector, class base_parameter, class Tuple>
+struct sql_parameters_tuple_helper<Connector, 0, base_parameter, Tuple>
 {
     static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<base_parameter>>& json)
     {
@@ -279,7 +279,7 @@ public:
                  const std::function<void(const row& rec)>& callback,
                  std::error_code& ec)
     {
-        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, base_parameter, Tuple>;
+        using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, base_parameter, Tuple>;
         
         const size_t num_elements = std::tuple_size<Tuple>::value;
         std::vector<std::unique_ptr<base_parameter>> params(std::tuple_size<Tuple>::value);
@@ -291,7 +291,7 @@ public:
     void execute(const Tuple& parameters,
                  std::error_code& ec)
     {
-        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, base_parameter, Tuple>;
+        using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, base_parameter, Tuple>;
 
         const size_t num_elements = std::tuple_size<Tuple>::value;
         std::vector<std::unique_ptr<base_parameter>> params(std::tuple_size<Tuple>::value);
@@ -303,7 +303,7 @@ public:
     void execute(const Tuple& parameters,
                  transaction& t)
     {
-        using helper = detail::sql_parameters_tuple_helper<std::tuple_size<Tuple>::value, base_parameter, Tuple>;
+        using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, base_parameter, Tuple>;
 
         const size_t num_elements = std::tuple_size<Tuple>::value;
         std::vector<std::unique_ptr<base_parameter>> params(std::tuple_size<Tuple>::value);

@@ -3,11 +3,11 @@
 
 #include <sqlcons/sqlcons.hpp>
 
-namespace sqlcons { 
+namespace sqlcons { namespace odbc {
 
 // conv_errc
 
-enum class sql_errc 
+enum class odbc_errc 
 {
     db_err = 1,
     E_01000,
@@ -55,7 +55,7 @@ enum class sql_errc
     E_42S22
 };
 
-class sqlcons_error_category_impl
+class odbc_error_category_impl
    : public std::error_category
 {
 public:
@@ -66,19 +66,16 @@ public:
     std::string message(int ev) const override;
 };
 
-const std::error_category& sqlcons_error_category();
+const std::error_category& odbc_error_category();
 
-std::error_code make_error_code(sql_errc result);
+std::error_code make_error_code(odbc_errc result);
 
-namespace odbc {
 class odbc_connector
 {
 public:
     static std::unique_ptr<connection_impl> create_connection();
 };
 
-}
-
-}
+}}
 
 #endif
