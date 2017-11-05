@@ -57,6 +57,12 @@ std::string odbc_error_category_impl::message(int ev) const
         return "[01001] Cursor operation conflict";
     case odbc_errc::E_01003:
         return "[01003] Cursor operation conflict";
+    case odbc_errc::E_01004:
+        return "[01004] String data, right truncated";
+    case odbc_errc::E_01006:
+        return "[01006] Privilidge not revoked";
+    case odbc_errc::E_01007:
+        return "[01007] Privilidge not granted";
     case odbc_errc::E_07002:
         return "[07002] COUNT field incorrect";
     case odbc_errc::E_07006:
@@ -99,6 +105,8 @@ std::string odbc_error_category_impl::message(int ev) const
         return "[40003] Statement completion unknown";
     case odbc_errc::E_42000:
         return "[42000] Syntax error or access violation";
+    case odbc_errc::E_42S02:
+        return "[42S02] Base table or view not found";
     case odbc_errc::E_44000:
         return "[44000] WITH CHECK OPTION violation";
     case odbc_errc::E_HY000:
@@ -694,11 +702,11 @@ void odbc_transaction_impl::end(std::error_code& ec)
 // statement_impl
 
 void statement_impl::execute(SQLHDBC hDbc, 
-                        const std::string& query, 
-                        const std::function<void(const row& rec)>& callback,
-                        std::error_code& ec)
+                             const std::string& query, 
+                             const std::function<void(const row& rec)>& callback,
+                             std::error_code& ec)
 {
-    std::wstring buf;
+    /*std::wstring buf;
     auto result1 = unicons::convert(query.begin(), query.end(),
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
@@ -715,9 +723,9 @@ void statement_impl::execute(SQLHDBC hDbc,
     {
         handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
-    }
+    }*/
 
-    process_results(hstmt_, callback, ec);
+    //process_results(hstmt_, callback, ec);
 }
 
 void statement_impl::execute(SQLHDBC hDbc, 
@@ -869,9 +877,12 @@ struct odbc_error_codes
     odbc_error_codes()
     {
         code_map[L"01000"] = odbc_errc::E_01000;
-        code_map[L"01S02"] = odbc_errc::E_01S02; 
         code_map[L"01001"] = odbc_errc::E_01001;
         code_map[L"01003"] = odbc_errc::E_01003;
+        code_map[L"01004"] = odbc_errc::E_01004;
+        code_map[L"01006"] = odbc_errc::E_01006;
+        code_map[L"01007"] = odbc_errc::E_01007;
+        code_map[L"01S02"] = odbc_errc::E_01S02; 
         code_map[L"07002"] = odbc_errc::E_07002;
         code_map[L"07006"] = odbc_errc::E_07006;
         code_map[L"07007"] = odbc_errc::E_07007;
@@ -893,6 +904,7 @@ struct odbc_error_codes
         code_map[L"40001"] = odbc_errc::E_40001;
         code_map[L"40003"] = odbc_errc::E_40003;
         code_map[L"42000"] = odbc_errc::E_42000;
+        code_map[L"42S02"] = odbc_errc::E_42S02;
         code_map[L"44000"] = odbc_errc::E_44000;
         code_map[L"HY000"] = odbc_errc::E_HY000;
         code_map[L"HY001"] = odbc_errc::E_HY001;

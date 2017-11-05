@@ -121,6 +121,8 @@ struct sql_type_traits
 class transaction_impl
 {
 public:
+    virtual ~transaction_impl() = default;
+
     virtual std::error_code error_code() const = 0;
 
     virtual void update_error_code(std::error_code ec) = 0;
@@ -133,6 +135,8 @@ public:
 class prepared_statement_impl
 {
 public:
+    virtual ~prepared_statement_impl() = default;
+
     virtual void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
                           const std::function<void(const row& rec)>& callback,
                           std::error_code& ec) = 0;
@@ -149,6 +153,8 @@ public:
 class connection_impl
 {
 public:
+    virtual ~connection_impl() = default;
+
     virtual void open(const std::string& connString, bool autoCommit, std::error_code& ec) = 0;
 
     virtual void auto_commit(bool val, std::error_code& ec) = 0;
@@ -288,8 +294,7 @@ public:
     }
 
     template <typename Tuple>
-    void execute(const Tuple& parameters,
-                 std::error_code& ec)
+    void execute(const Tuple& parameters, std::error_code& ec)
     {
         using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, base_parameter, Tuple>;
 
@@ -300,8 +305,7 @@ public:
     }
 
     template <typename Tuple>
-    void execute(const Tuple& parameters,
-                 transaction& t)
+    void execute(const Tuple& parameters, transaction& t)
     {
         using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, base_parameter, Tuple>;
 
@@ -357,9 +361,14 @@ void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<base_pa
 template <class Connector>
 class connection
 {
+    std::unique_ptr<connection_impl> pimpl_;
 public:
-    connection();
-    ~connection();
+    connection() : pimpl_(Connector::create_connection()) 
+    {
+    }
+    ~connection()
+    {
+    }
 
     void open(const std::string& connString, bool autoCommit, std::error_code& ec);
 
@@ -383,17 +392,9 @@ public:
     void execute(const std::string& query, 
                  const std::function<void(const row& rec)>& callback,
                  std::error_code& ec);
-private:
-    std::unique_ptr<connection_impl> pimpl_;
 };
 
 // connection<Connector>
-
-template <class Connector>
-connection<Connector>::connection() : pimpl_(Connector::create_connection()) {}
-
-template <class Connector>
-connection<Connector>::~connection() = default;
 
 template <class Connector>
 void connection<Connector>::open(const std::string& connString, bool autoCommit, std::error_code& ec)
