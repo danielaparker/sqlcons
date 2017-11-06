@@ -28,9 +28,9 @@ void transaction::update_error_code(std::error_code ec)
     pimpl_->update_error_code(ec);
 }
 
-void transaction::end(std::error_code& ec)
+void transaction::end_transaction(std::error_code& ec)
 {
-    pimpl_->end(ec);
+    pimpl_->end_transaction(ec);
 }
 
 // row

@@ -27,7 +27,7 @@ public:
 
     void update_error_code(std::error_code ec);
 
-    void end(std::error_code& ec);
+    void end_transaction(std::error_code& ec);
 private:
     std::unique_ptr<transaction_impl> pimpl_;
 };
@@ -127,7 +127,7 @@ public:
 
     virtual void update_error_code(std::error_code ec) = 0;
 
-    virtual void end(std::error_code& ec) = 0;
+    virtual void end_transaction(std::error_code& ec) = 0;
 };
 
 // prepared_statement_impl
@@ -161,11 +161,9 @@ public:
 
     virtual void connection_timeout(size_t val, std::error_code& ec) = 0;
 
-    virtual std::unique_ptr<transaction_impl> create_transaction() = 0;
+    virtual std::unique_ptr<transaction_impl> make_transaction() = 0;
 
     virtual std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec) = 0;
-
-    virtual std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans) = 0;
 
     virtual void commit(std::error_code& ec) = 0;
     virtual void rollback(std::error_code& ec) = 0;
@@ -376,9 +374,7 @@ public:
 
     void connection_timeout(size_t val, std::error_code& ec);
 
-    transaction create_transaction();
-
-    prepared_statement<Connector> prepare_statement(const std::string& query, transaction& trans);
+    transaction make_transaction();
 
     prepared_statement<Connector> prepare_statement(const std::string& query, std::error_code& ec);
 
@@ -415,21 +411,15 @@ void connection<Connector>::connection_timeout(size_t val, std::error_code& ec)
 }
 
 template <class Connector>
-transaction connection<Connector>::create_transaction()
+transaction connection<Connector>::make_transaction()
 {
-    return transaction(pimpl_->create_transaction());
+    return transaction(pimpl_->make_transaction());
 }
 
 template <class Connector>
 prepared_statement<Connector> connection<Connector>::prepare_statement(const std::string& query, std::error_code& ec)
 {
     return prepared_statement<Connector>(pimpl_->prepare_statement(query, ec));
-}
-
-template <class Connector>
-prepared_statement<Connector> connection<Connector>::prepare_statement(const std::string& query, transaction& trans)
-{
-    return prepared_statement<Connector>(pimpl_->prepare_statement(query, trans));
 }
 
 template <class Connector>

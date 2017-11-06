@@ -167,11 +167,9 @@ public:
 
     void connection_timeout(size_t val, std::error_code& ec) override;
 
-    std::unique_ptr<transaction_impl> create_transaction() override;
+    std::unique_ptr<transaction_impl> make_transaction() override;
 
     std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec) override;
-
-    std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, transaction& trans) override;
 
     void commit(std::error_code& ec) override;
     void rollback(std::error_code& ec) override;
@@ -197,7 +195,7 @@ public:
 
     void update_error_code(std::error_code ec) override;
 
-    void end(std::error_code& ec) override;
+    void end_transaction(std::error_code& ec) override;
 };
 
 
@@ -432,17 +430,6 @@ void odbc_connection_impl::open(const std::string& connString, bool autoCommit, 
     }
 }
 
-std::unique_ptr<prepared_statement_impl> odbc_connection_impl::prepare_statement(const std::string& query, transaction& trans)
-{
-    std::error_code ec;
-    auto stat = prepare_statement(query,ec);
-    if (ec)
-    {
-        trans.update_error_code(ec);
-    }
-    return stat;
-}
-
 std::unique_ptr<prepared_statement_impl> odbc_connection_impl::prepare_statement(const std::string& query, std::error_code& ec)
 {
     std::wstring wquery;
@@ -467,7 +454,7 @@ std::unique_ptr<prepared_statement_impl> odbc_connection_impl::prepare_statement
     return std::make_unique<odbc_prepared_statement_impl>(hstmt);
 }
 
-std::unique_ptr<transaction_impl> odbc_connection_impl::create_transaction()
+std::unique_ptr<transaction_impl> odbc_connection_impl::make_transaction()
 {
     return std::make_unique<odbc_transaction_impl>(this);
 }
@@ -667,7 +654,7 @@ odbc_transaction_impl::odbc_transaction_impl(connection_impl* pimpl)
 odbc_transaction_impl::~odbc_transaction_impl()
 {
     std::error_code ec;
-    end(ec);
+    end_transaction(ec);
 }
 
 std::error_code odbc_transaction_impl::error_code() const
@@ -683,7 +670,7 @@ void odbc_transaction_impl::update_error_code(std::error_code ec)
     }
 }
 
-void odbc_transaction_impl::end(std::error_code& ec)
+void odbc_transaction_impl::end_transaction(std::error_code& ec)
 {
     if (pimpl_ != nullptr)
     {
