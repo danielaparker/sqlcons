@@ -693,7 +693,7 @@ void statement_impl::execute(SQLHDBC hDbc,
                              const std::function<void(const row& rec)>& callback,
                              std::error_code& ec)
 {
-    std::wstring buf;
+    /*std::wstring buf;
     auto result1 = unicons::convert(query.begin(), query.end(),
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
@@ -710,9 +710,9 @@ void statement_impl::execute(SQLHDBC hDbc,
     {
         handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
-    }
+    }*/
 
-    process_results(hstmt_, callback, ec);
+    //process_results(hstmt_, callback, ec);
 }
 
 void statement_impl::execute(SQLHDBC hDbc, 
