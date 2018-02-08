@@ -6,7 +6,7 @@ namespace sqlcons {
 // parameter<std::string>
 
 parameter<std::string>::parameter(int sql_type_identifier,int c_type_identifier, const std::string& val)
-    : base_parameter(sql_type_identifier, c_type_identifier)
+    : parameter_base(sql_type_identifier, c_type_identifier)
 {
     auto result1 = unicons::convert(val.begin(),val.end(),
                                     std::back_inserter(value_), 

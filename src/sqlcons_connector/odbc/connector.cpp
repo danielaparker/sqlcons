@@ -221,14 +221,14 @@ public:
         } 
     }
 
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+    void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                     const std::function<void(const row& rec)>& callback,
                     std::error_code& ec) override;
 
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+    void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                     std::error_code& ec) override;
 
-    void execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+    void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                   transaction& t) override;
 };
 
@@ -693,7 +693,7 @@ void statement_impl::execute(SQLHDBC hDbc,
                              const std::function<void(const row& rec)>& callback,
                              std::error_code& ec)
 {
-    /*std::wstring buf;
+    std::wstring buf;
     auto result1 = unicons::convert(query.begin(), query.end(),
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
@@ -710,9 +710,9 @@ void statement_impl::execute(SQLHDBC hDbc,
     {
         handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
-    }*/
+    }
 
-    //process_results(hstmt_, callback, ec);
+    process_results(hstmt_, callback, ec);
 }
 
 void statement_impl::execute(SQLHDBC hDbc, 
@@ -751,7 +751,7 @@ odbc_prepared_statement_impl::odbc_prepared_statement_impl(SQLHSTMT hstmt)
 {
 }
 
-void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                                        const std::function<void(const row& rec)>& callback,
                                        std::error_code& ec)
 {
@@ -795,7 +795,7 @@ void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_par
     process_results(hstmt_, callback, ec);
 }
 
-void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                                           std::error_code& ec)
 {
     RETCODE rc;
@@ -836,7 +836,7 @@ void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_par
     }
 }
 
-void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<base_parameter>>& bindings, 
+void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                                             transaction& t)
 {
     if (!t.error_code())
