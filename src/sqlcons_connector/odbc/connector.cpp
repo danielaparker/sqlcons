@@ -16,6 +16,11 @@
 namespace sqlcons { 
 
 template<>
+int sql_type_traits<odbc::odbc_connector,bool>::sql_type_identifier() { return SQL_CHAR; }
+template<>
+int sql_type_traits<odbc::odbc_connector,bool>::c_type_identifier() { return SQL_C_CHAR; }
+
+template<>
 int sql_type_traits<odbc::odbc_connector,std::string>::sql_type_identifier() { return SQL_WVARCHAR; }
 template<>
 int sql_type_traits<odbc::odbc_connector,std::string>::c_type_identifier() { return SQL_C_WCHAR; }
@@ -29,6 +34,21 @@ template<>
 int sql_type_traits<odbc::odbc_connector,int32_t>::sql_type_identifier() { return SQL_INTEGER; }
 template<>
 int sql_type_traits<odbc::odbc_connector,int32_t>::c_type_identifier() { return SQL_C_SLONG; }
+
+template<>
+int sql_type_traits<odbc::odbc_connector,int64_t>::sql_type_identifier() { return SQL_BIGINT; }
+template<>
+int sql_type_traits<odbc::odbc_connector,int64_t>::c_type_identifier() { return SQL_C_SBIGINT; }
+
+template<>
+int sql_type_traits<odbc::odbc_connector,uint64_t>::sql_type_identifier() { return SQL_BIGINT; }
+template<>
+int sql_type_traits<odbc::odbc_connector,uint64_t>::c_type_identifier() { return SQL_C_UBIGINT; }
+
+template<>
+int sql_type_traits<odbc::odbc_connector,double>::sql_type_identifier() { return SQL_DOUBLE; }
+template<>
+int sql_type_traits<odbc::odbc_connector,double>::c_type_identifier() { return SQL_C_DOUBLE; }
 
 namespace odbc {
 
@@ -185,15 +205,15 @@ public:
 class odbc_transaction_impl : public virtual transaction_impl
 {
     connection_impl* pimpl_;
-    std::error_code ec_;
+    bool fail_;
 public:
     odbc_transaction_impl(connection_impl* pimpl);
 
     ~odbc_transaction_impl();
 
-    std::error_code error_code() const override;
+    bool fail() const override;
 
-    void update_error_code(std::error_code ec) override;
+    void set_fail() override;
 
     void end_transaction(std::error_code& ec) override;
 };
@@ -229,7 +249,8 @@ public:
                     std::error_code& ec) override;
 
     void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                  transaction& t) override;
+                  transaction& t,
+                  std::error_code& ec) override;
 };
 
 // odbc_connector
@@ -349,6 +370,8 @@ void odbc_connection_impl::execute(const std::string& query,
 void odbc_connection_impl::execute(const std::string& query, 
                                std::error_code& ec)
 {
+    std::cout << query << std::endl;
+
     statement_impl q;
     q.execute(hdbc_,query,ec);
 }
@@ -645,11 +668,14 @@ public:
 // odbc_transaction_impl
 
 odbc_transaction_impl::odbc_transaction_impl(connection_impl* pimpl)
-    : pimpl_(pimpl)
+    : pimpl_(pimpl), fail_(false)
 {
     std::error_code ec;
     pimpl_->auto_commit(false,ec);
-    update_error_code(ec);
+    if (ec)
+    {
+        set_fail();
+    }
 }
 odbc_transaction_impl::~odbc_transaction_impl()
 {
@@ -657,24 +683,21 @@ odbc_transaction_impl::~odbc_transaction_impl()
     end_transaction(ec);
 }
 
-std::error_code odbc_transaction_impl::error_code() const
+bool odbc_transaction_impl::fail() const
 {
-    return ec_;
+    return fail_;
 }
 
-void odbc_transaction_impl::update_error_code(std::error_code ec)
+void odbc_transaction_impl::set_fail()
 {
-    if (ec)
-    {
-        ec_ = ec;
-    }
+    fail_ = true;
 }
 
 void odbc_transaction_impl::end_transaction(std::error_code& ec)
 {
     if (pimpl_ != nullptr)
     {
-        if (ec_)
+        if (fail_)
         {
             pimpl_->rollback(ec);
         }
@@ -693,7 +716,7 @@ void statement_impl::execute(SQLHDBC hDbc,
                              const std::function<void(const row& rec)>& callback,
                              std::error_code& ec)
 {
-    /*std::wstring buf;
+    std::wstring buf;
     auto result1 = unicons::convert(query.begin(), query.end(),
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
@@ -710,15 +733,17 @@ void statement_impl::execute(SQLHDBC hDbc,
     {
         handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
         return;
-    }*/
+    }
 
-    //process_results(hstmt_, callback, ec);
+    process_results(hstmt_, callback, ec);
 }
 
 void statement_impl::execute(SQLHDBC hDbc, 
                              const std::string& query, 
                              std::error_code& ec)
 {
+    std::cout << query << std::endl;
+
     std::wstring buf;
     auto result1 = unicons::convert(query.begin(), query.end(),
                                     std::back_inserter(buf), 
@@ -837,13 +862,16 @@ void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<paramete
 }
 
 void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                            transaction& t)
+                                            transaction& t, 
+                                            std::error_code& ec)
 {
-    if (!t.error_code())
+    if (!t.fail())
     {
-        std::error_code ec;
         execute_(bindings,ec);
-        t.update_error_code(ec);
+        if (ec)
+        {
+            t.set_fail();
+        }
     }
 }
 

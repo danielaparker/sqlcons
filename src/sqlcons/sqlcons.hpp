@@ -9,6 +9,7 @@
 #include <map>
 #include <iostream>
 #include <sqlcons/unicode_traits.hpp>
+#include <jsoncons/json.hpp>
 
 namespace sqlcons {
 
@@ -23,9 +24,9 @@ public:
     transaction(std::unique_ptr<transaction_impl>&& pimpl);
     ~transaction();
 
-    std::error_code error_code() const;
+    bool fail() const;
 
-    void update_error_code(std::error_code ec);
+    void set_fail();
 
     void end_transaction(std::error_code& ec);
 private:
@@ -123,9 +124,9 @@ class transaction_impl
 public:
     virtual ~transaction_impl() = default;
 
-    virtual std::error_code error_code() const = 0;
+    virtual bool fail() const = 0;
 
-    virtual void update_error_code(std::error_code ec) = 0;
+    virtual void set_fail() = 0;
 
     virtual void end_transaction(std::error_code& ec) = 0;
 };
@@ -139,13 +140,19 @@ public:
 
     virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                           const std::function<void(const row& rec)>& callback,
+                          transaction& t,
+                          std::error_code& ec) = 0;
+
+    virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
+                          const std::function<void(const row& rec)>& callback,
                           std::error_code& ec) = 0;
 
     virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                           std::error_code& ec) = 0;
 
     virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                          transaction& t) = 0;
+                          transaction& t,
+                          std::error_code& ec) = 0;
 };
 
 // connection_impl
@@ -167,8 +174,7 @@ public:
 
     virtual void commit(std::error_code& ec) = 0;
     virtual void rollback(std::error_code& ec) = 0;
-    virtual void execute(const std::string& query, 
-                         std::error_code& ec) = 0;
+    virtual void execute(const std::string& query, std::error_code& ec) = 0;
     virtual void execute(const std::string& query, 
                          const std::function<void(const row& rec)>& callback,
                          std::error_code& ec) = 0;
@@ -239,34 +245,6 @@ struct parameter<std::string> : public parameter_base
     std::vector<wchar_t> value_;
 };
 
-namespace detail
-{
-
-template<class Connector, size_t Pos, class parameter_base, class Tuple>
-struct sql_parameters_tuple_helper
-{
-    using element_type = typename std::tuple_element<Pos - 1, Tuple>::type;
-    using next = sql_parameters_tuple_helper<Connector, Pos - 1, parameter_base, Tuple>;
-
-    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_base>>& bindings)
-    {
-        bindings[Pos - 1] = std::make_unique<parameter<element_type>>(sql_type_traits<Connector,element_type>::sql_type_identifier(), 
-                                                                      sql_type_traits<Connector,element_type>::c_type_identifier(),
-                                                                      std::get<Pos-1>(tuple));
-        next::to_parameters(tuple, bindings);
-    }
-};
-
-template<class Connector, class parameter_base, class Tuple>
-struct sql_parameters_tuple_helper<Connector, 0, parameter_base, Tuple>
-{
-    static void to_parameters(const Tuple& tuple, std::vector<std::unique_ptr<parameter_base>>& json)
-    {
-    }
-};
-
-}
-
 template <class Connector>
 class prepared_statement
 {
@@ -278,48 +256,146 @@ public:
 
     void execute(std::error_code& ec);
 
-    template <typename Tuple>
-    void execute(const Tuple& parameters,
+    void execute(const jsoncons::json& parameters,
                  const std::function<void(const row& rec)>& callback,
                  std::error_code& ec)
     {
-        using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, parameter_base, Tuple>;
-        
-        const size_t num_elements = std::tuple_size<Tuple>::value;
-        std::vector<std::unique_ptr<parameter_base>> params(std::tuple_size<Tuple>::value);
-        helper::to_parameters(parameters, params);
-        execute_(params,callback,ec);
+        std::vector<std::unique_ptr<parameter_base>> bindings;
+        if (parameters.is_array())
+        {
+            bindings.reserve(parameters.size());
+            for (const auto& val : parameters.array_range())
+            {
+                switch (val.type_id())
+                {
+                case jsoncons::json_type_tag::bool_t:
+                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Connector,bool>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,bool>::c_type_identifier(),
+                                       val.as_bool()));
+                    break;
+                case jsoncons::json_type_tag::uinteger_t:
+                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Connector,uint64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,uint64_t>::c_type_identifier(),
+                                       val.as_integer()));
+                    break;
+                case jsoncons::json_type_tag::integer_t:
+                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Connector,int64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,int64_t>::c_type_identifier(),
+                                       val.as_integer()));
+                    break;
+                case jsoncons::json_type_tag::double_t:
+                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Connector,double>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,double>::c_type_identifier(),
+                                       val.as_double()));
+                    break;
+                case jsoncons::json_type_tag::small_string_t:
+                case jsoncons::json_type_tag::string_t:
+                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Connector,std::string>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,std::string>::c_type_identifier(),
+                                       val.as_string()));
+                    break;
+                }
+            }
+        }
+        execute_(bindings,callback,ec);
     }
 
-    template <typename Tuple>
-    void execute(const Tuple& parameters, std::error_code& ec)
+    void execute(const jsoncons::json& parameters, std::error_code& ec)
     {
-        using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, parameter_base, Tuple>;
-
-        const size_t num_elements = std::tuple_size<Tuple>::value;
-        std::vector<std::unique_ptr<parameter_base>> params(std::tuple_size<Tuple>::value);
-        helper::to_parameters(parameters, params);
-        execute_(params,ec);
+        std::vector<std::unique_ptr<parameter_base>> bindings;
+        if (parameters.is_array())
+        {
+            bindings.reserve(parameters.size());
+            for (const auto& val : parameters.array_range())
+            {
+                switch (val.type_id())
+                {
+                case jsoncons::json_type_tag::bool_t:
+                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Connector,bool>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,bool>::c_type_identifier(),
+                                       val.as_bool()));
+                    break;
+                case jsoncons::json_type_tag::uinteger_t:
+                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Connector,uint64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,uint64_t>::c_type_identifier(),
+                                       val.as_integer()));
+                    break;
+                case jsoncons::json_type_tag::integer_t:
+                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Connector,int64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,int64_t>::c_type_identifier(),
+                                       val.as_integer()));
+                    break;
+                case jsoncons::json_type_tag::double_t:
+                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Connector,double>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,double>::c_type_identifier(),
+                                       val.as_double()));
+                    break;
+                case jsoncons::json_type_tag::small_string_t:
+                case jsoncons::json_type_tag::string_t:
+                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Connector,std::string>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,std::string>::c_type_identifier(),
+                                       val.as_string()));
+                    break;
+                }
+            }
+        }
+        execute_(bindings,ec);
     }
 
-    template <typename Tuple>
-    void execute(const Tuple& parameters, transaction& t)
+    void execute(const jsoncons::json& parameters, transaction& t, std::error_code& ec)
     {
-        using helper = detail::sql_parameters_tuple_helper<Connector, std::tuple_size<Tuple>::value, parameter_base, Tuple>;
-
-        const size_t num_elements = std::tuple_size<Tuple>::value;
-        std::vector<std::unique_ptr<parameter_base>> params(std::tuple_size<Tuple>::value);
-        helper::to_parameters(parameters, params);
-        execute_(params,t);
+        std::vector<std::unique_ptr<parameter_base>> bindings;
+        if (parameters.is_array())
+        {
+            bindings.reserve(parameters.size());
+            for (const auto& val : parameters.array_range())
+            {
+                switch (val.type_id())
+                {
+                case jsoncons::json_type_tag::bool_t:
+                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Connector,bool>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,bool>::c_type_identifier(),
+                                       val.as_bool()));
+                    break;
+                case jsoncons::json_type_tag::uinteger_t:
+                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Connector,uint64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,uint64_t>::c_type_identifier(),
+                                       val.as_integer()));
+                    break;
+                case jsoncons::json_type_tag::integer_t:
+                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Connector,int64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,int64_t>::c_type_identifier(),
+                                       val.as_integer()));
+                    break;
+                case jsoncons::json_type_tag::double_t:
+                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Connector,double>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,double>::c_type_identifier(),
+                                       val.as_double()));
+                    break;
+                case jsoncons::json_type_tag::small_string_t:
+                case jsoncons::json_type_tag::string_t:
+                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Connector,std::string>::sql_type_identifier(), 
+                                       sql_type_traits<Connector,std::string>::c_type_identifier(),
+                                       val.as_string()));
+                    break;
+                }
+            }
+        }
+        execute_(bindings, t, ec);
     }
 private:
     void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings,
         const std::function<void(const row& rec)>& callback,
         std::error_code& ec);
     void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings,
+        const std::function<void(const row& rec)>& callback,
+        transaction& t,
         std::error_code& ec);
     void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings,
-                    transaction& t);
+        std::error_code& ec);
+    void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
+                  transaction& t,
+                  std::error_code& ec);
 
     std::unique_ptr<prepared_statement_impl> pimpl_;
 };
@@ -334,24 +410,34 @@ prepared_statement<Connector>::~prepared_statement() = default;
 
 template <class Connector>
 void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                        const std::function<void(const row& rec)>& callback,
-                                        std::error_code& ec)
+                                             const std::function<void(const row& rec)>& callback,
+                                             std::error_code& ec)
 {
     pimpl_->execute_(bindings, callback, ec);
 }
 
 template <class Connector>
 void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                        std::error_code& ec)
+                                             const std::function<void(const row& rec)>& callback,
+                                             transaction& t, 
+                                             std::error_code& ec)
+{
+    pimpl_->execute_(bindings, callback, t, ec);
+}
+
+template <class Connector>
+void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
+                                             std::error_code& ec)
 {
     pimpl_->execute_(bindings, ec);
 }
 
 template <class Connector>
 void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                  transaction& t)
+                                             transaction& t, 
+                                             std::error_code& ec)
 {
-    pimpl_->execute_(bindings, t);
+    pimpl_->execute_(bindings, t, ec);
 }
 
 // connection
@@ -374,9 +460,15 @@ public:
 
     void connection_timeout(size_t val, std::error_code& ec);
 
-    transaction make_transaction();
+    friend transaction make_transaction(connection<Connector>& conn)
+    {
+        return transaction(conn.pimpl_->make_transaction());
+    }
 
-    prepared_statement<Connector> prepare_statement(const std::string& query, std::error_code& ec);
+    friend prepared_statement<Connector> make_prepared_statement(connection<Connector>& conn, const std::string& query, std::error_code& ec)
+    {
+        return prepared_statement<Connector>(conn.pimpl_->prepare_statement(query, ec));
+    }
 
     void commit(std::error_code& ec);
 
@@ -408,18 +500,6 @@ template <class Connector>
 void connection<Connector>::connection_timeout(size_t val, std::error_code& ec)
 {
     pimpl_->connection_timeout(val, ec);
-}
-
-template <class Connector>
-transaction connection<Connector>::make_transaction()
-{
-    return transaction(pimpl_->make_transaction());
-}
-
-template <class Connector>
-prepared_statement<Connector> connection<Connector>::prepare_statement(const std::string& query, std::error_code& ec)
-{
-    return prepared_statement<Connector>(pimpl_->prepare_statement(query, ec));
 }
 
 template <class Connector>

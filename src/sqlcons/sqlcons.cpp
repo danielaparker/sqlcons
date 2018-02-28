@@ -18,14 +18,14 @@ transaction::transaction(std::unique_ptr<transaction_impl>&& impl) : pimpl_(std:
 
 transaction::~transaction() = default;
 
-std::error_code transaction::error_code() const
+bool transaction::fail() const
 {
-    return pimpl_->error_code();
+    return pimpl_->fail();
 }
 
-void transaction::update_error_code(std::error_code ec)
+void transaction::set_fail()
 {
-    pimpl_->update_error_code(ec);
+    pimpl_->set_fail();
 }
 
 void transaction::end_transaction(std::error_code& ec)
