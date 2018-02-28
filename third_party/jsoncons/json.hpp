@@ -169,7 +169,7 @@ public:
             {}
         };
 
-        class null_data : public data_base
+        class null_data final : public data_base
         {
         public:
             null_data()
@@ -178,7 +178,7 @@ public:
             }
         };
 
-        class empty_object_data : public data_base
+        class empty_object_data final : public data_base
         {
         public:
             empty_object_data()
@@ -187,7 +187,7 @@ public:
             }
         };
 
-        class bool_data : public data_base
+        class bool_data final : public data_base
         {
             bool val_;
         public:
@@ -208,7 +208,7 @@ public:
 
         };
 
-        class integer_data : public data_base
+        class integer_data final : public data_base
         {
             int64_t val_;
         public:
@@ -228,7 +228,7 @@ public:
             }
         };
 
-        class uinteger_data : public data_base
+        class uinteger_data final : public data_base
         {
             uint64_t val_;
         public:
@@ -248,8 +248,9 @@ public:
             }
         };
 
-        class double_data : public data_base
+        class double_data final : public data_base
         {
+            chars_format format_;
             uint8_t precision_;
             uint8_t decimal_places_;
             double val_;
@@ -263,6 +264,7 @@ public:
             }
             double_data(double val, const number_format& fmt)
                 : data_base(json_type_tag::double_t), 
+                  format_(fmt.floating_point_format()), 
                   precision_(fmt.precision()), 
                   decimal_places_(fmt.decimal_places()), 
                   val_(val)
@@ -293,7 +295,7 @@ public:
             }
         };
 
-        class small_string_data : public data_base
+        class small_string_data final : public data_base
         {
             static const size_t capacity = 14/sizeof(char_type);
             uint8_t length_;
@@ -333,7 +335,7 @@ public:
         };
 
         // string_data
-        class string_data : public data_base
+        class string_data final : public data_base
         {
             typedef typename detail::heap_only_string_factory<char_type, Allocator>::string_pointer pointer;
 
@@ -398,7 +400,7 @@ public:
         };
 
         // byte_string_data
-        class byte_string_data: public data_base
+        class byte_string_data final : public data_base
         {
             typedef typename std::allocator_traits<Allocator>:: template rebind_alloc<byte_string_storage_type> string_holder_allocator_type;
             typedef typename std::allocator_traits<string_holder_allocator_type>::pointer pointer;
@@ -477,7 +479,7 @@ public:
         };
 
         // array_data
-        class array_data : public data_base
+        class array_data final : public data_base
         {
             typedef typename std::allocator_traits<array_allocator>::pointer pointer;
             pointer ptr_;
@@ -559,7 +561,7 @@ public:
         };
 
         // object_data
-        class object_data : public data_base
+        class object_data final : public data_base
         {
             typedef typename std::allocator_traits<object_allocator>::pointer pointer;
             pointer ptr_;
@@ -961,7 +963,7 @@ public:
             case json_type_tag::string_t:
                 return string_view_type(string_data_cast()->data(),string_data_cast()->length());
             default:
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not a string"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a string"));
             }
         }
 
@@ -972,7 +974,7 @@ public:
             case json_type_tag::byte_string_t:
                 return byte_string_view(byte_string_data_cast()->data(),byte_string_data_cast()->length());
             default:
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not a byte string"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a byte string"));
             }
         }
 
@@ -2733,12 +2735,12 @@ public:
         }
         size_t offset = result.it - s.begin();
         parser.set_source(s.data()+offset,s.size()-offset);
-        parser.parse();
+        parser.parse_some();
         parser.end_parse();
         parser.check_done();
         if (!decoder.is_valid())
         {
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Failed to parse json string"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Failed to parse json string"));
         }
         return decoder.get_result();
     }
@@ -2903,7 +2905,7 @@ public:
     }
 
     basic_json(double val, uint8_t precision)
-        : var_(val, precision, 0)
+        : var_(val, number_format(precision, 0))
     {
     }
 
@@ -3025,7 +3027,7 @@ public:
             return json_proxy<basic_json>(*this, key_storage_type(name.begin(),name.end(),char_allocator_type(object_value().get_allocator())));
             break;
         default:
-            JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+            JSONCONS_THROW(not_an_object(name.data(),name.length()));
             break;
         }
     }
@@ -3290,7 +3292,7 @@ public:
 
     bool is_integer() const JSONCONS_NOEXCEPT
     {
-        return var_.type_id() == json_type_tag::integer_t || (var_.type_id() == json_type_tag::uinteger_t&& (as_uinteger() <= static_cast<uint64_t>((std::numeric_limits<long long>::max)())));
+        return var_.type_id() == json_type_tag::integer_t || (var_.type_id() == json_type_tag::uinteger_t&& (as_uinteger() <= static_cast<uint64_t>((std::numeric_limits<int64_t>::max)())));
     }
 
     bool is_uinteger() const JSONCONS_NOEXCEPT
@@ -3351,7 +3353,7 @@ public:
     typename std::enable_if<!is_stateless<U>::value,void>::type
     create_object_implicitly() const
     {
-        JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Cannot create object implicitly - allocator is not default constructible.");
+        JSONCONS_THROW(json_exception_impl<std::runtime_error>("Cannot create object implicitly - allocator is not default constructible."));
     }
 
     void reserve(size_t n)
@@ -3428,7 +3430,7 @@ public:
             }
             catch (...)
             {
-                JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a bool");
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a bool"));
             }
             break;
         case json_type_tag::bool_t:
@@ -3440,7 +3442,7 @@ public:
         case json_type_tag::uinteger_t:
             return var_.uinteger_data_cast()->value() != 0;
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a bool");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a bool"));
         }
     }
 
@@ -3457,7 +3459,7 @@ public:
             }
             catch (...)
             {
-                JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not an integer");
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an integer"));
             }
             break;
         case json_type_tag::double_t:
@@ -3469,7 +3471,7 @@ public:
         case json_type_tag::bool_t:
             return var_.bool_data_cast()->value() ? 1 : 0;
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not an integer");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an integer"));
         }
     }
 
@@ -3486,7 +3488,7 @@ public:
             }
             catch (...)
             {
-                JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not an unsigned integer");
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an unsigned integer"));
             }
             break;
         case json_type_tag::double_t:
@@ -3498,7 +3500,7 @@ public:
         case json_type_tag::bool_t:
             return var_.bool_data_cast()->value() ? 1 : 0;
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not an unsigned integer");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an unsigned integer"));
         }
     }
 
@@ -3509,7 +3511,7 @@ public:
         case json_type_tag::double_t:
             return var_.double_data_cast()->precision();
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a double");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a double"));
         }
     }
 
@@ -3520,7 +3522,7 @@ public:
         case json_type_tag::double_t:
             return var_.double_data_cast()->decimal_places();
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a double");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a double"));
         }
     }
 
@@ -3537,7 +3539,7 @@ public:
             }
             catch (...)
             {
-                JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a double");
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a double"));
             }
             break;
         case json_type_tag::double_t:
@@ -3549,7 +3551,7 @@ public:
         //case json_type_tag::null_t:
         //    return std::numeric_limits<double>::quiet_NaN();
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a double");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a double"));
         }
     }
 
@@ -3623,7 +3625,7 @@ public:
         case json_type_tag::string_t:
             return var_.string_data_cast()->c_str();
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a cstring");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a cstring"));
         }
     }
 
@@ -3636,7 +3638,7 @@ public:
         case json_type_tag::double_t:
             return var_.double_data_cast()->precision();
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Not a double");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a double"));
         }
     }
 #endif
@@ -3646,20 +3648,20 @@ public:
         switch (var_.type_id())
         {
         case json_type_tag::empty_object_t:
-            JSONCONS_THROW_EXCEPTION(key_not_found(name.data(),name.length()));
+            JSONCONS_THROW(key_not_found(name.data(),name.length()));
         case json_type_tag::object_t:
             {
                 auto it = object_value().find(name);
                 if (it == object_range().end())
                 {
-                    JSONCONS_THROW_EXCEPTION(key_not_found(name.data(),name.length()));
+                    JSONCONS_THROW(key_not_found(name.data(),name.length()));
                 }
                 return it->value();
             }
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3693,20 +3695,20 @@ public:
         switch (var_.type_id())
         {
         case json_type_tag::empty_object_t:
-            JSONCONS_THROW_EXCEPTION(key_not_found(name.data(),name.length()));
+            JSONCONS_THROW(key_not_found(name.data(),name.length()));
         case json_type_tag::object_t:
             {
                 auto it = object_value().find(name);
                 if (it == object_range().end())
                 {
-                    JSONCONS_THROW_EXCEPTION(key_not_found(name.data(),name.length()));
+                    JSONCONS_THROW(key_not_found(name.data(),name.length()));
                 }
                 return it->value();
             }
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3718,13 +3720,13 @@ public:
         case json_type_tag::array_t:
             if (i >= array_value().size())
             {
-                JSONCONS_THROW_EXCEPTION_OLD(std::out_of_range,"Invalid array subscript");
+                JSONCONS_THROW(json_exception_impl<std::out_of_range>("Invalid array subscript"));
             }
             return array_value().operator[](i);
         case json_type_tag::object_t:
             return object_value().at(i);
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Index on non-array value not supported");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Index on non-array value not supported"));
         }
     }
 
@@ -3735,13 +3737,13 @@ public:
         case json_type_tag::array_t:
             if (i >= array_value().size())
             {
-                JSONCONS_THROW_EXCEPTION_OLD(std::out_of_range,"Invalid array subscript");
+                JSONCONS_THROW(json_exception_impl<std::out_of_range>("Invalid array subscript"));
             }
             return array_value().operator[](i);
         case json_type_tag::object_t:
             return object_value().at(i);
         default:
-            JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Index on non-array value not supported");
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Index on non-array value not supported"));
         }
     }
 
@@ -3755,7 +3757,7 @@ public:
             return object_value().find(name);
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3770,7 +3772,7 @@ public:
             return object_value().find(name);
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3798,7 +3800,7 @@ public:
             }
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3826,7 +3828,7 @@ public:
             }
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3853,7 +3855,7 @@ public:
             }
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3900,7 +3902,7 @@ public:
             object_value().erase(pos);
             break;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an object"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an object"));
             break;
         }
     }
@@ -3915,7 +3917,7 @@ public:
             object_value().erase(first, last);
             break;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an object"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an object"));
             break;
         }
     }
@@ -3928,7 +3930,7 @@ public:
             array_value().erase(pos);
             break;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an array"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an array"));
             break;
         }
     }
@@ -3941,7 +3943,7 @@ public:
             array_value().erase(first, last);
             break;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an array"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an array"));
             break;
         }
     }
@@ -3958,7 +3960,7 @@ public:
             object_value().erase(name);
             break;
         default:
-            JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+            JSONCONS_THROW(not_an_object(name.data(),name.length()));
             break;
         }
     }
@@ -3981,7 +3983,7 @@ public:
             return object_value().insert_or_assign(name, std::forward<T>(val));
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -3998,7 +4000,7 @@ public:
             return object_value().try_emplace(name, std::forward<Args>(args)...);
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -4016,7 +4018,7 @@ public:
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -4034,7 +4036,7 @@ public:
             return object_value().merge(source.object_value());
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge a value that is not an object"));
             }
         }
     }
@@ -4050,7 +4052,7 @@ public:
             return object_value().merge(std::move(source.object_value()));
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge a value that is not an object"));
             }
         }
     }
@@ -4066,7 +4068,7 @@ public:
             return object_value().merge(hint, source.object_value());
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge a value that is not an object"));
             }
         }
     }
@@ -4082,7 +4084,7 @@ public:
             return object_value().merge(hint, std::move(source.object_value()));
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge a value that is not an object"));
             }
         }
     }
@@ -4100,7 +4102,7 @@ public:
             return object_value().merge_or_update(source.object_value());
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge or update a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge or update a value that is not an object"));
             }
         }
     }
@@ -4116,7 +4118,7 @@ public:
             return object_value().merge_or_update(std::move(source.object_value()));
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge or update a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge or update a value that is not an object"));
             }
         }
     }
@@ -4132,7 +4134,7 @@ public:
             return object_value().merge_or_update(hint, source.object_value());
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge or update a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge or update a value that is not an object"));
             }
         }
     }
@@ -4148,7 +4150,7 @@ public:
             return object_value().merge_or_update(hint, std::move(source.object_value()));
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to merge or update a value that is not an object"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to merge or update a value that is not an object"));
             }
         }
     }
@@ -4173,7 +4175,7 @@ public:
             return object_value().insert_or_assign(hint, name, std::forward<T>(val));
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -4190,7 +4192,7 @@ public:
             return object_value().try_emplace(hint, name, std::forward<Args>(args)...);
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -4208,7 +4210,7 @@ public:
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -4229,7 +4231,7 @@ public:
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to insert into a value that is not an array"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to insert into a value that is not an array"));
             }
         }
     }
@@ -4250,7 +4252,7 @@ public:
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to insert into a value that is not an array"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to insert into a value that is not an array"));
             }
         }
     }
@@ -4265,7 +4267,7 @@ public:
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to insert into a value that is not an array"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to insert into a value that is not an array"));
             }
         }
     }
@@ -4280,7 +4282,7 @@ public:
             break;
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to insert into a value that is not an array"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to insert into a value that is not an array"));
             }
         }
     }
@@ -4294,7 +4296,7 @@ public:
             return array_value().emplace_back(std::forward<Args>(args)...);
         default:
             {
-                JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Attempting to insert into a value that is not an array"));
+                JSONCONS_THROW(json_exception_impl<std::runtime_error>("Attempting to insert into a value that is not an array"));
             }
         }
     }
@@ -4474,7 +4476,7 @@ public:
             }
         default:
             {
-                JSONCONS_THROW_EXCEPTION(not_an_object(name.data(),name.length()));
+                JSONCONS_THROW(not_an_object(name.data(),name.length()));
             }
         }
     }
@@ -4512,7 +4514,7 @@ public:
         case json_type_tag::bool_t:
             return var_.bool_data_cast()->value() ? 1 : 0;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an int"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an int"));
         }
     }
 
@@ -4529,7 +4531,7 @@ public:
         case json_type_tag::bool_t:
             return var_.bool_data_cast()->value() ? 1 : 0;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an unsigned int"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an unsigned int"));
         }
     }
 
@@ -4546,7 +4548,7 @@ public:
         case json_type_tag::bool_t:
             return var_.bool_data_cast()->value() ? 1 : 0;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not a long"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not a long"));
         }
     }
 
@@ -4563,7 +4565,7 @@ public:
         case json_type_tag::bool_t:
             return var_.bool_data_cast()->value() ? 1 : 0;
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an unsigned long"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an unsigned long"));
         }
     }
 
@@ -4680,7 +4682,7 @@ public:
         case json_type_tag::object_t:
             return range<object_iterator>(object_value().begin(),object_value().end());
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an object"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an object"));
         }
     }
 
@@ -4694,7 +4696,7 @@ public:
         case json_type_tag::object_t:
             return range<const_object_iterator>(object_value().begin(),object_value().end());
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an object"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an object"));
         }
     }
 
@@ -4705,7 +4707,7 @@ public:
         case json_type_tag::array_t:
             return range<array_iterator>(array_value().begin(),array_value().end());
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an array"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an array"));
         }
     }
 
@@ -4716,7 +4718,7 @@ public:
         case json_type_tag::array_t:
             return range<const_array_iterator>(array_value().begin(),array_value().end());
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Not an array"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Not an array"));
         }
     }
 
@@ -4727,7 +4729,7 @@ public:
         case json_type_tag::array_t:
             return var_.array_data_cast()->value();
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Bad array cast"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Bad array cast"));
             break;
         }
     }
@@ -4739,7 +4741,7 @@ public:
         case json_type_tag::array_t:
             return var_.array_data_cast()->value();
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Bad array cast"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Bad array cast"));
             break;
         }
     }
@@ -4754,7 +4756,7 @@ public:
         case json_type_tag::object_t:
             return var_.object_data_cast()->value();
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Bad object cast"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Bad object cast"));
             break;
         }
     }
@@ -4769,7 +4771,7 @@ public:
         case json_type_tag::object_t:
             return var_.object_data_cast()->value();
         default:
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Bad object cast"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Bad object cast"));
             break;
         }
     }
@@ -4790,7 +4792,7 @@ private:
         reader.check_done();
         if (!handler.is_valid())
         {
-            JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Failed to parse json stream"));
+            JSONCONS_THROW(json_exception_impl<std::runtime_error>("Failed to parse json stream"));
         }
         o = handler.get_result();
         return is;
@@ -4820,7 +4822,7 @@ basic_json<CharT,ImplementationPolicy,Allocator> basic_json<CharT,Implementation
     reader.check_done();
     if (!handler.is_valid())
     {
-        JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Failed to parse json stream"));
+        JSONCONS_THROW(json_exception_impl<std::runtime_error>("Failed to parse json stream"));
     }
     return handler.get_result();
 }
@@ -4834,7 +4836,7 @@ std::basic_istream<typename Json::char_type>& operator>>(std::basic_istream<type
     reader.check_done();
     if (!handler.is_valid())
     {
-        JSONCONS_THROW_EXCEPTION(json_runtime_error<std::runtime_error>("Failed to parse json stream"));
+        JSONCONS_THROW(json_exception_impl<std::runtime_error>("Failed to parse json stream"));
     }
     o = handler.get_result();
     return is;

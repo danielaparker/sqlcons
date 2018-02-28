@@ -30,14 +30,14 @@ public:
 };
 
 template <class Base>
-class json_runtime_error : public Base, public virtual json_exception
+class json_exception_impl : public Base, public virtual json_exception
 {
 public:
-    json_runtime_error(const std::string& s) JSONCONS_NOEXCEPT
+    json_exception_impl(const std::string& s) JSONCONS_NOEXCEPT
         : Base(""), message_(s)
     {
     }
-    ~json_runtime_error() JSONCONS_NOEXCEPT
+    ~json_exception_impl() JSONCONS_NOEXCEPT
     {
     }
     const char* what() const JSONCONS_NOEXCEPT override
@@ -94,54 +94,14 @@ private:
     std::string buffer_;
 };
 
-template <class Base>
-class json_exception_1 : public Base, public virtual json_exception
-{
-public:
-    json_exception_1(const std::string& format, const std::string& arg1) JSONCONS_NOEXCEPT
-        : Base(""), format_(format), arg1_(arg1)
-    {
-    }
-    json_exception_1(const std::string& format, const std::wstring& arg1) JSONCONS_NOEXCEPT
-        : Base(""), format_(format)
-    {
-        char buf[255];
-        size_t retval;
-#if defined(JSONCONS_HAS_WCSTOMBS_S)
-        wcstombs_s(&retval, buf, sizeof(buf), arg1.c_str(), arg1.size());
-#else
-        retval = wcstombs(buf, arg1.c_str(), sizeof(buf));
-#endif
-        if (retval != static_cast<std::size_t>(-1))
-        {
-            arg1_ = buf;
-        }
-    }
-    ~json_exception_1() JSONCONS_NOEXCEPT
-    {
-    }
-    const char* what() const JSONCONS_NOEXCEPT
-    {
-        c99_snprintf(const_cast<char*>(message_),255, format_.c_str(),arg1_.c_str());
-        return message_;
-    }
-private:
-    std::string format_;
-    std::string arg1_;
-    char message_[255];
-};
-
 #define JSONCONS_STR2(x)  #x
 #define JSONCONS_STR(x)  JSONCONS_STR2(x)
 
 #define JSONCONS_ASSERT(x) if (!(x)) { \
-    throw jsoncons::json_runtime_error<std::runtime_error>("assertion '" #x "' failed at " __FILE__ ":" \
+    throw jsoncons::json_exception_impl<std::runtime_error>("assertion '" #x "' failed at " __FILE__ ":" \
             JSONCONS_STR(__LINE__)); }
 
-#define JSONCONS_THROW_EXCEPTION_OLD(Base,x) throw jsoncons::json_runtime_error<Base>((x))
-#define JSONCONS_THROW_EXCEPTION_1(Base,fmt,arg1) throw jsoncons::json_exception_1<Base>((fmt),(arg1))
-
-#define JSONCONS_THROW_EXCEPTION(x) throw (x)
+#define JSONCONS_THROW(x) throw (x)
 
 }
 #endif

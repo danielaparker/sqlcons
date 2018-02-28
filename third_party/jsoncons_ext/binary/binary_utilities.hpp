@@ -94,6 +94,27 @@
 #endif
 
 namespace jsoncons { namespace binary { 
+  
+class read_nbytes_failed : public std::invalid_argument, public virtual json_exception
+{
+public:
+    explicit read_nbytes_failed(size_t count) JSONCONS_NOEXCEPT
+        : std::invalid_argument("")
+    {
+        buffer_.append("Failed attempting to read ");
+        buffer_.append(std::to_string(count));
+        buffer_.append(" bytes from vector");
+    }
+    ~read_nbytes_failed() JSONCONS_NOEXCEPT
+    {
+    }
+    const char* what() const JSONCONS_NOEXCEPT override
+    {
+        return buffer_.c_str();
+    }
+private:
+    std::string buffer_;
+};
 
 namespace detail {
 
@@ -106,6 +127,8 @@ static inline bool add_check_overflow(size_t v1, size_t v2, size_t *r)
     *r = v1 + v2;
     return v1 > v1 + v2;
 #endif
+}
+
 }
 
 inline 
@@ -245,190 +268,85 @@ void to_big_endian(double val, std::vector<uint8_t>& v)
 template<class T>
 typename std::enable_if<std::is_integral<T>::value && 
 sizeof(T) == sizeof(uint8_t),T>::type
-from_big_endian(const uint8_t* it, const uint8_t* end)
+from_big_endian(const uint8_t* first, const uint8_t* last, const uint8_t** endp)
 {
-    if (it + sizeof(T) > end)
+    if (first + sizeof(T) > last)
     {
-        JSONCONS_THROW_EXCEPTION_1(std::out_of_range,"Failed attempting to read %s bytes from vector", std::to_string(sizeof(T)));
+        *endp = first;
+        return 0;
     }
-    return static_cast<T>(*(it));
+    else
+    {
+        *endp = first + sizeof(T);
+        return static_cast<T>(*(first));
+    }
 }
 
 template<class T>
 typename std::enable_if<std::is_integral<T>::value && 
 sizeof(T) == sizeof(uint16_t),T>::type
-from_big_endian(const uint8_t* it, const uint8_t* end)
+from_big_endian(const uint8_t* first, const uint8_t* last, const uint8_t** endp)
 {
-    if (it + sizeof(T) > end)
+    if (first + sizeof(T) > last)
     {
-        JSONCONS_THROW_EXCEPTION_1(std::out_of_range,"Failed attempting to read %s bytes from vector", std::to_string(sizeof(T)));
+        *endp = first;
+        return 0;
     }
-    return JSONCONS_BINARY_TO_BE16(*reinterpret_cast<const uint16_t*>(it));
+    else
+    {
+        *endp = first + sizeof(T);
+        return JSONCONS_BINARY_TO_BE16(*reinterpret_cast<const uint16_t*>(first));
+    }
 }
 
 template<class T>
 typename std::enable_if<std::is_integral<T>::value && sizeof(T) == sizeof(uint32_t),T>::type
-from_big_endian(const uint8_t* it, const uint8_t* end)
+from_big_endian(const uint8_t* first, const uint8_t* last, const uint8_t** endp)
 {
-    if (it + sizeof(T) > end)
+    if (first + sizeof(T) > last)
     {
-        JSONCONS_THROW_EXCEPTION_1(std::out_of_range,"Failed attempting to read %s bytes from vector", std::to_string(sizeof(T)));
+        *endp = first;
+        return 0;
     }
-    return JSONCONS_BINARY_TO_BE32(*reinterpret_cast<const uint32_t*>(it));
+    else
+    {
+        *endp = first + sizeof(T);
+        return JSONCONS_BINARY_TO_BE32(*reinterpret_cast<const uint32_t*>(first));
+    }
 }
 
 template<class T>
 typename std::enable_if<std::is_integral<T>::value && sizeof(T) == sizeof(uint64_t),T>::type
-from_big_endian(const uint8_t* it, const uint8_t* end)
+from_big_endian(const uint8_t* first, const uint8_t* last, const uint8_t** endp)
 {
-    if (it + sizeof(T) > end)
+    if (first + sizeof(T) > last)
     {
-        JSONCONS_THROW_EXCEPTION_1(std::out_of_range,"Failed attempting to read %s bytes from vector", std::to_string(sizeof(T)));
+        *endp = first;
+        return 0;
     }
-    return JSONCONS_BINARY_TO_BE64(*reinterpret_cast<const uint64_t*>(it));
+    else
+    {
+        *endp = first + sizeof(T);
+        return JSONCONS_BINARY_TO_BE64(*reinterpret_cast<const uint64_t*>(first));
+    }
 }
 
 template<class T>
 typename std::enable_if<std::is_floating_point<T>::value && 
 sizeof(T) == sizeof(uint32_t),T>::type
-from_big_endian(const uint8_t* it, const uint8_t* end)
+from_big_endian(const uint8_t* first, const uint8_t* last, const uint8_t** endp)
 {
-    uint32_t data = from_big_endian<uint32_t>(it,end);
+    uint32_t data = from_big_endian<uint32_t>(first,last,endp);
     return *reinterpret_cast<T*>(&data);
 }
 
 template<class T>
 typename std::enable_if<std::is_floating_point<T>::value && 
 sizeof(T) == sizeof(uint64_t),T>::type
-from_big_endian(const uint8_t* it, const uint8_t* end)
+from_big_endian(const uint8_t* first, const uint8_t* last, const uint8_t** endp)
 {
-    uint64_t data = from_big_endian<uint64_t>(it,end);
+    uint64_t data = from_big_endian<uint64_t>(first,last,endp);
     return *reinterpret_cast<T*>(&data);
-}
-
-static const std::string base64_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                                           "abcdefghijklmnopqrstuvwxyz"
-                                           "0123456789+/";
-
-inline 
-static bool is_base64(uint8_t c) 
-{
-    return isalnum(c) || c == '+' || c == '/';
-}
-
-template <class InputIt>
-std::string encode_base64(InputIt first, InputIt last)
-{
-    std::string result;
-    unsigned char a3[3];
-    unsigned char a4[4];
-    int i = 0;
-    int j = 0;
-
-    while (first != last)
-    {
-        a3[i++] = *first++;
-        if (i == 3)
-        {
-            a4[0] = (a3[0] & 0xfc) >> 2;
-            a4[1] = ((a3[0] & 0x03) << 4) + ((a3[1] & 0xf0) >> 4);
-            a4[2] = ((a3[1] & 0x0f) << 2) + ((a3[2] & 0xc0) >> 6);
-            a4[3] = a3[2] & 0x3f;
-
-            for (i = 0; i < 4; i++) 
-            {
-                result.push_back(base64_alphabet[a4[i]]);
-            }
-            i = 0;
-        }
-    }
-
-    if (i > 0)
-    {
-        for (j = i; j < 3; ++j) 
-        {
-            a3[j] = '\0';
-        }
-
-        a4[0] = (a3[0] & 0xfc) >> 2;
-        a4[1] = ((a3[0] & 0x03) << 4) + ((a3[1] & 0xf0) >> 4);
-        a4[2] = ((a3[1] & 0x0f) << 2) + ((a3[2] & 0xc0) >> 6);
-
-        for (j = 0; j < i + 1; ++j) 
-        {
-            result.push_back(base64_alphabet[a4[j]]);
-        }
-
-        while (i++ < 3) 
-        {
-            result.push_back('=');
-        }
-    }
-
-    return result; 
-}
-
-inline
-std::string encode_base64(const std::string& s)
-{
-    return encode_base64(s.begin(), s.end());
-}
-
-inline
-std::string decode_base64(const std::string& base64_string)
-{
-    std::string result;
-    size_t buflen = base64_string.size();
-    uint8_t a4[4], a3[3];
-    uint8_t i = 0;
-    uint8_t j = 0;
-
-    auto first = base64_string.begin();
-    auto last = base64_string.end();
-
-    while (first != last && *first != '=')
-    {
-        JSONCONS_ASSERT(is_base64(*first));
-
-        a4[i++] = *first++; 
-        if (i == 4)
-        {
-            for (i = 0; i < 4; ++i) 
-            {
-                a4[i] = static_cast<uint8_t>(base64_alphabet.find(a4[i]));
-            }
-
-            a3[0] = (a4[0] << 2) + ((a4[1] & 0x30) >> 4);
-            a3[1] = ((a4[1] & 0xf) << 4) + ((a4[2] & 0x3c) >> 2);
-            a3[2] = ((a4[2] & 0x3) << 6) +   a4[3];
-
-            for (i = 0; i < 3; i++) 
-            {
-                result.push_back(a3[i]);
-            }
-            i = 0;
-        }
-    }
-
-    if (i > 0)
-    {
-        for (j = 0; j < i; ++j) 
-        {
-            a4[j] = static_cast<uint8_t>(base64_alphabet.find(a4[j]));
-        }
-
-        a3[0] = (a4[0] << 2) + ((a4[1] & 0x30) >> 4);
-        a3[1] = ((a4[1] & 0xf) << 4) + ((a4[2] & 0x3c) >> 2);
-
-        for (j = 0; j < i - 1; ++j) 
-        {
-            result.push_back(a3[j]);
-        }
-    }
-
-    return result;
-}
-
 }
 
 }}

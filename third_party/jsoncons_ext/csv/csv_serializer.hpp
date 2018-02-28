@@ -21,12 +21,12 @@
 #include <jsoncons/detail/number_printers.hpp>
 #include <jsoncons/detail/obufferedstream.hpp>
 #include <jsoncons_ext/csv/csv_parameters.hpp>
-#include <jsoncons/detail/writers.hpp>
+#include <jsoncons/detail/writer.hpp>
 
 namespace jsoncons { namespace csv {
 
 template<class CharT,class Writer=jsoncons::detail::ostream_buffered_writer<CharT>,class Allocator=std::allocator<CharT>>
-class basic_csv_serializer : public basic_json_output_handler<CharT>
+class basic_csv_serializer final : public basic_json_output_handler<CharT>
 {
 public:
     typedef typename Writer::output_type output_type;

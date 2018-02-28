@@ -20,13 +20,13 @@
 #include <jsoncons/jsoncons_utilities.hpp>
 #include <jsoncons/serialization_options.hpp>
 #include <jsoncons/json_output_handler.hpp>
-#include <jsoncons/detail/writers.hpp>
+#include <jsoncons/detail/writer.hpp>
 #include <jsoncons/detail/number_printers.hpp>
 
 namespace jsoncons {
 
 template<class CharT,class Writer=detail::ostream_buffered_writer<CharT>>
-class basic_json_serializer : public basic_json_output_handler<CharT>
+class basic_json_serializer final : public basic_json_output_handler<CharT>
 {
 public:
     using typename basic_json_output_handler<CharT>::string_view_type;
@@ -184,7 +184,7 @@ private:
                     unicons::sequence_generator<const CharT*> g(it,end,unicons::conv_flags::strict);
                     if (g.done() || g.status() != unicons::conv_errc())
                     {
-                        JSONCONS_THROW_EXCEPTION_OLD(std::runtime_error,"Invalid codepoint");
+                        JSONCONS_THROW(json_exception_impl<std::runtime_error>("Invalid codepoint"));
                     }
                     uint32_t cp = g.get().codepoint();
                     it += (g.get().length() - 1);

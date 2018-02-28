@@ -134,7 +134,6 @@ private:
     typedef typename Json::char_type char_type;
     typedef typename Json::char_traits_type char_traits_type;
     typedef std::basic_string<char_type,char_traits_type> string_type;
-    typedef typename Json::key_storage_type key_storage_type;
     typedef typename Json::string_view_type string_view_type;
     typedef JsonReference reference;
     using pointer = typename std::conditional<std::is_const<typename std::remove_reference<JsonReference>::type>::value,typename Json::const_pointer,typename Json::pointer>::type;
@@ -174,7 +173,7 @@ private:
                             node_set& nodes, std::vector<std::shared_ptr<Json>>& temp_json_values) = 0;
     };
 
-    class expr_selector : public selector
+    class expr_selector final : public selector
     {
     private:
          jsonpath_filter_expr<Json> result_;
@@ -204,7 +203,7 @@ private:
         }
     };
 
-    class filter_selector : public selector
+    class filter_selector final : public selector
     {
     private:
          jsonpath_filter_expr<Json> result_;
@@ -245,7 +244,7 @@ private:
         }
     };
 
-    class name_selector : public selector
+    class name_selector final : public selector
     {
     private:
         string_type name_;
@@ -308,7 +307,7 @@ private:
         }
     };
 
-    class array_slice_selector : public selector
+    class array_slice_selector final : public selector
     {
     private:
         size_t start_;

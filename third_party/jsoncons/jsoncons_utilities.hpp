@@ -144,7 +144,7 @@ public:
     {
         if (pos >= length_)
         {
-            JSONCONS_THROW_EXCEPTION_OLD(std::out_of_range, "pos exceeds length");
+            JSONCONS_THROW(json_exception_impl<std::out_of_range>("pos exceeds length"));
         }
         return data_[pos];
     }
@@ -169,7 +169,7 @@ public:
     {
         if (pos > length_)
         {
-            JSONCONS_THROW_EXCEPTION_OLD(std::out_of_range, "pos exceeds size");
+            JSONCONS_THROW(json_exception_impl<std::out_of_range>("pos exceeds size"));
         }
         if (n == npos || pos + n > length_)
         {
@@ -549,29 +549,34 @@ using basic_string_view_ext = std::basic_string_view<CharT, Traits>;
 #if !defined(JSONCONS_NO_TO_CHARS)
 using chars_format = std::chars_format;
 #else
-enum class chars_format {fixed,scientific,hex,general=fixed|scientific};
+enum class chars_format : uint8_t {fixed=1,scientific=2,hex=4,general=fixed|scientific};
 #endif
 
 // number_format
 
 class number_format
 {
-    chars_format floating_point_format_;
+    chars_format format_;
     uint8_t precision_;
     uint8_t decimal_places_;
 public:
     number_format()
-        : floating_point_format_(chars_format::general), precision_(0), decimal_places_(0)
+        : format_(chars_format::general), precision_(0), decimal_places_(0)
     {
     }
 
     number_format(uint8_t precision, uint8_t decimal_places)
-        : floating_point_format_(chars_format::general), precision_(precision), decimal_places_(decimal_places)
+        : format_(chars_format::general), precision_(precision), decimal_places_(decimal_places)
     {
     }
 
-    number_format(chars_format floating_point_format, uint8_t precision, uint8_t decimal_places)
-        : floating_point_format_(floating_point_format), precision_(precision), decimal_places_(decimal_places)
+    number_format(chars_format format, uint8_t precision, uint8_t decimal_places)
+        : format_(format), precision_(precision), decimal_places_(decimal_places)
+    {
+    }
+
+    number_format(chars_format format)
+        : format_(format), precision_(0), decimal_places_(0)
     {
     }
 
@@ -592,7 +597,7 @@ public:
 
     chars_format floating_point_format() const
     {
-        return floating_point_format_;
+        return format_;
     }
 };
 
@@ -721,6 +726,11 @@ public:
         }
     }
 
+    basic_byte_string(const uint8_t* data, size_t length)
+    {
+        data_.insert(data,data+length);
+    }
+
     basic_byte_string(const basic_byte_string& s) = default; 
 
     basic_byte_string(basic_byte_string&& s) = default; 
@@ -732,6 +742,27 @@ public:
     operator byte_string_view() const JSONCONS_NOEXCEPT
     {
         return byte_string_view(data(),length());
+    }
+
+    void push_back(uint8_t b)
+    {
+        data_.push_back(b);
+    }
+
+    void assign(const uint8_t* s, size_t count)
+    {
+        data_.clear();
+        data_.insert(s, s+count);
+    }
+
+    void append(const uint8_t* s, size_t count)
+    {
+        data_.insert(s, s+count);
+    }
+
+    void clear()
+    {
+        data_.clear();
     }
 
     uint8_t operator[](size_type pos) const 
