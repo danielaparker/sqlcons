@@ -3,7 +3,10 @@
 ## Query example
 
 ```c++
-void main()
+#include <sqlcons_connector/odbc/connector.hpp>
+#include <sqlcons/sqlcons.hpp>
+
+int main()
 {
     std::error_code ec;
 
