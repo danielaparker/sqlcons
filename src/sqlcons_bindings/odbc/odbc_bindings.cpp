@@ -1,7 +1,5 @@
-#include <sqlcons_connector/odbc/connector.hpp>
+#include <sqlcons_bindings/odbc/odbc_bindings.hpp>
 #include <windows.h> 
-//#include <sql.h> 
-#define UNICODE  
 #include <string> 
 #include <sqlext.h> 
 #include <stdio.h> 
@@ -16,39 +14,39 @@
 namespace sqlcons { 
 
 template<>
-int sql_type_traits<odbc::odbc_connector,bool>::sql_type_identifier() { return SQL_CHAR; }
+int sql_type_traits<odbc::odbc_bindings,bool>::sql_type_identifier() { return SQL_CHAR; }
 template<>
-int sql_type_traits<odbc::odbc_connector,bool>::c_type_identifier() { return SQL_C_CHAR; }
+int sql_type_traits<odbc::odbc_bindings,bool>::c_type_identifier() { return SQL_C_CHAR; }
 
 template<>
-int sql_type_traits<odbc::odbc_connector,std::string>::sql_type_identifier() { return SQL_WVARCHAR; }
+int sql_type_traits<odbc::odbc_bindings,std::string>::sql_type_identifier() { return SQL_WVARCHAR; }
 template<>
-int sql_type_traits<odbc::odbc_connector,std::string>::c_type_identifier() { return SQL_C_WCHAR; }
+int sql_type_traits<odbc::odbc_bindings,std::string>::c_type_identifier() { return SQL_C_WCHAR; }
 
 template<>
-int sql_type_traits<odbc::odbc_connector,int16_t>::sql_type_identifier() { return SQL_SMALLINT; }
+int sql_type_traits<odbc::odbc_bindings,int16_t>::sql_type_identifier() { return SQL_SMALLINT; }
 template<>
-int sql_type_traits<odbc::odbc_connector,int16_t>::c_type_identifier() { return SQL_C_SSHORT; }
+int sql_type_traits<odbc::odbc_bindings,int16_t>::c_type_identifier() { return SQL_C_SSHORT; }
 
 template<>
-int sql_type_traits<odbc::odbc_connector,int32_t>::sql_type_identifier() { return SQL_INTEGER; }
+int sql_type_traits<odbc::odbc_bindings,int32_t>::sql_type_identifier() { return SQL_INTEGER; }
 template<>
-int sql_type_traits<odbc::odbc_connector,int32_t>::c_type_identifier() { return SQL_C_SLONG; }
+int sql_type_traits<odbc::odbc_bindings,int32_t>::c_type_identifier() { return SQL_C_SLONG; }
 
 template<>
-int sql_type_traits<odbc::odbc_connector,int64_t>::sql_type_identifier() { return SQL_BIGINT; }
+int sql_type_traits<odbc::odbc_bindings,int64_t>::sql_type_identifier() { return SQL_BIGINT; }
 template<>
-int sql_type_traits<odbc::odbc_connector,int64_t>::c_type_identifier() { return SQL_C_SBIGINT; }
+int sql_type_traits<odbc::odbc_bindings,int64_t>::c_type_identifier() { return SQL_C_SBIGINT; }
 
 template<>
-int sql_type_traits<odbc::odbc_connector,uint64_t>::sql_type_identifier() { return SQL_BIGINT; }
+int sql_type_traits<odbc::odbc_bindings,uint64_t>::sql_type_identifier() { return SQL_BIGINT; }
 template<>
-int sql_type_traits<odbc::odbc_connector,uint64_t>::c_type_identifier() { return SQL_C_UBIGINT; }
+int sql_type_traits<odbc::odbc_bindings,uint64_t>::c_type_identifier() { return SQL_C_UBIGINT; }
 
 template<>
-int sql_type_traits<odbc::odbc_connector,double>::sql_type_identifier() { return SQL_DOUBLE; }
+int sql_type_traits<odbc::odbc_bindings,double>::sql_type_identifier() { return SQL_DOUBLE; }
 template<>
-int sql_type_traits<odbc::odbc_connector,double>::c_type_identifier() { return SQL_C_DOUBLE; }
+int sql_type_traits<odbc::odbc_bindings,double>::c_type_identifier() { return SQL_C_DOUBLE; }
 
 namespace odbc {
 
@@ -231,9 +229,9 @@ public:
 
 };
 
-// odbc_connector
+// odbc_bindings
 
-std::unique_ptr<connection_impl> odbc_connector::create_connection(const std::string& connString, std::error_code& ec)
+std::unique_ptr<connection_impl> odbc_bindings::create_connection(const std::string& connString, std::error_code& ec)
 {
     auto ptr = std::make_unique<odbc_connection_impl>();
     ptr->open(connString, ec);
@@ -653,7 +651,7 @@ public:
                     else
                     {
                         length_or_null_ = length_or_null;
-                        if (length_or_null < size)
+                        if ((size_t)length_or_null < size)
                         {
                             done = true;
                         }
@@ -927,6 +925,7 @@ public:
         else
         {
             size_t len = length_or_null_/sizeof(wchar_t);
+            std::wcout << L"len: " << len << ", str: " << std::wstring(value_.data(), value_.data() + len) << std::endl;
             return std::wstring(value_.data(), value_.data() + len);
         }
     }
@@ -1015,12 +1014,16 @@ public:
 
     std::wstring as_wstring() const override
     {
-        return L"";
+        std::wstringstream ss;
+        ss << value_;
+        return ss.str();
     }
 
     std::string as_string() const override
     {
-        return "";
+        std::stringstream ss;
+        ss << value_;
+        return ss.str();
     }
 
     double as_double() const override
@@ -1086,12 +1089,16 @@ public:
 
     std::wstring as_wstring() const override
     {
-        return L"";
+        std::wstringstream ss;
+        ss << value_;
+        return ss.str();
     }
 
     std::string as_string() const override
     {
-        return "";
+        std::stringstream ss;
+        ss << value_;
+        return ss.str();
     }
 
     double as_double() const override
@@ -1191,7 +1198,7 @@ void odbc_prepared_statement_impl::execute_(std::vector<std::unique_ptr<paramete
                               bindings[i]->column_size(), 
                               0,
                               bindings[i]->pvalue(), 
-                              bindings[i]->buffer_capacity(), 
+                              bindings[i]->buffer_capacity(),
                               &lengths[i]);
         if (rc == SQL_ERROR)
         {
@@ -1463,17 +1470,6 @@ void process_results(SQLHSTMT hstmt,
                 }
                 //std::wcout << std::wstring(&name[0],nameLength) << " " << "SQL_TYPE_TIMESTAMP" << std::endl;
                 break;
-            case SQL_SMALLINT:
-            case SQL_TINYINT:
-            case SQL_INTEGER:
-            case SQL_BIGINT:
-                //std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
-                values.push_back(std::make_unique<integer_value>(std::wstring(&name[0],nameLength),
-                                                                 col,
-                                                                 column_size,
-                                                                 nullable));
-                values.back()->bind(hstmt, ec);
-                break;
             case SQL_VARCHAR:
             case SQL_CHAR:
                 std::wcout << std::wstring(&name[0],nameLength) << L" " << L"char" << std::endl;
@@ -1492,7 +1488,7 @@ void process_results(SQLHSTMT hstmt,
                 break;
             case SQL_WVARCHAR:
             case SQL_WCHAR:
-                std::wcout << std::wstring(&name[0],nameLength) << L" " << L"wchar" << std::endl;
+                //std::wcout << std::wstring(&name[0],nameLength) << L" " << L"wchar" << std::endl;
                 values.push_back(std::make_unique<wstring_value>(std::wstring(&name[0],nameLength),
                                                                  col,
                                                                  column_size,
@@ -1504,6 +1500,17 @@ void process_results(SQLHSTMT hstmt,
                 values.push_back(std::make_unique<long_wstring_value>(std::wstring(&name[0],nameLength),
                                                                       col,
                                                                       nullable));
+                values.back()->bind(hstmt, ec);
+                break;
+            case SQL_SMALLINT:
+            case SQL_TINYINT:
+            case SQL_INTEGER:
+            case SQL_BIGINT:
+                //std::wcout << std::wstring(&name[0], nameLength) << " " << "BIGINT" << std::endl;
+                values.push_back(std::make_unique<integer_value>(std::wstring(&name[0],nameLength),
+                                                                 col,
+                                                                 column_size,
+                                                                 nullable));
                 values.back()->bind(hstmt, ec);
                 break;
             case SQL_DECIMAL:
@@ -1555,6 +1562,10 @@ void process_results(SQLHSTMT hstmt,
                 {
                     value_impl& c = static_cast<value_impl&>(rec[i]);
                     c.get_data(hstmt,ec);
+                    if (ec)
+                    {
+                        return;
+                    }
                 }
                 callback(rec);
             } 

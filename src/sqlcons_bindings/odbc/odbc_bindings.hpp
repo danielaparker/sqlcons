@@ -1,5 +1,5 @@
-#ifndef SQLCONSCONNECTOR_ODBC_CONNECTOR_HPP
-#define SQLCONSCONNECTOR_ODBC_CONNECTOR_HPP
+#ifndef SQLCONSCONNECTOR_ODBC_ODBCBINDINGS_HPP
+#define SQLCONSCONNECTOR_ODBC_ODBCBINDINGS_HPP
 
 #include <sqlcons/sqlcons.hpp>
 
@@ -74,7 +74,7 @@ const std::error_category& odbc_error_category();
 
 std::error_code make_error_code(odbc_errc result);
 
-class odbc_connector
+class odbc_bindings
 {
 public:
     static std::unique_ptr<connection_impl> create_connection(const std::string& connString, std::error_code& ec);
