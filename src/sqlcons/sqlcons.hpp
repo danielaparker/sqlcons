@@ -483,7 +483,7 @@ public:
     {
         std::error_code ec;
         transaction_policy_.end_transaction(pimpl_.get(),ec);
-        pool_->free_connection(pimpl_);
+        pool_->release(pimpl_);
     }
 
     connection() = delete;
@@ -566,7 +566,7 @@ public:
         return connection<Connector,TP>(std::move(ptr), TP{}, this);
     }
 
-    void free_connection(std::unique_ptr<connection_impl>& connection)
+    void release(std::unique_ptr<connection_impl>& connection)
     {
         std::lock_guard<std::mutex> lock(connection_pool_mutex_);
         if (free_connections_.size() >= max_pool_size_)
