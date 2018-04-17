@@ -1,6 +1,8 @@
 #ifndef SQLCONS_HPP
 #define SQLCONS_HPP
 
+#include <mutex>
+#include <stack>
 #include <memory>
 #include <system_error>
 #include <functional>
@@ -12,26 +14,6 @@
 #include <jsoncons/json.hpp>
 
 namespace sqlcons {
-
-class transaction_impl;
-
-// transaction
-
-class transaction
-{
-public:
-    transaction(transaction&&) = default;
-    transaction(std::unique_ptr<transaction_impl>&& pimpl);
-    ~transaction();
-
-    bool fail() const;
-
-    void set_fail();
-
-    void end_transaction(std::error_code& ec);
-private:
-    std::unique_ptr<transaction_impl> pimpl_;
-};
 
 // value
 
@@ -53,19 +35,43 @@ public:
 
 class row
 {
-public:
-    row(std::vector<value*>&& values);
-
-    ~row();
-
-    size_t size() const;
-
-    const value& operator[](size_t index) const;
-private:
     std::vector<value*> values_;
     std::map<std::string,value*> column_map_;
-};
+public:
+    typedef std::vector<value*>::iterator iterator;
 
+    row(std::vector<value*>&& values)
+        : values_(std::move(values))
+    {
+    }
+
+    ~row() = default;
+
+    size_t size() const
+    {
+        return values_.size();
+    }
+
+    const value& operator[](size_t index) const
+    {
+        return *values_[index];
+    }
+
+    value& operator[](size_t index)
+    {
+        return *values_[index];
+    }
+
+    iterator begin() 
+    {
+        return values_.begin();
+    }
+
+    iterator end() 
+    {
+        return values_.end();
+    }
+};
 
 // parameter_base
 
@@ -117,20 +123,6 @@ struct sql_type_traits
     static int c_type_identifier();
 };
 
-// transaction_impl
-
-class transaction_impl
-{
-public:
-    virtual ~transaction_impl() = default;
-
-    virtual bool fail() const = 0;
-
-    virtual void set_fail() = 0;
-
-    virtual void end_transaction(std::error_code& ec) = 0;
-};
-
 // prepared_statement_impl
 
 class prepared_statement_impl
@@ -140,18 +132,9 @@ public:
 
     virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
                           const std::function<void(const row& rec)>& callback,
-                          transaction& t,
                           std::error_code& ec) = 0;
 
     virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                          const std::function<void(const row& rec)>& callback,
-                          std::error_code& ec) = 0;
-
-    virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                          std::error_code& ec) = 0;
-
-    virtual void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                          transaction& t,
                           std::error_code& ec) = 0;
 };
 
@@ -162,13 +145,11 @@ class connection_impl
 public:
     virtual ~connection_impl() = default;
 
-    virtual void open(const std::string& connString, bool autoCommit, std::error_code& ec) = 0;
+    virtual void open(const std::string& connString, std::error_code& ec) = 0;
 
     virtual void auto_commit(bool val, std::error_code& ec) = 0;
 
     virtual void connection_timeout(size_t val, std::error_code& ec) = 0;
-
-    virtual std::unique_ptr<transaction_impl> make_transaction() = 0;
 
     virtual std::unique_ptr<prepared_statement_impl> prepare_statement(const std::string& query, std::error_code& ec) = 0;
 
@@ -178,6 +159,8 @@ public:
     virtual void execute(const std::string& query, 
                          const std::function<void(const row& rec)>& callback,
                          std::error_code& ec) = 0;
+
+    virtual bool is_valid() const = 0;
 };
 
 // parameter<T>
@@ -219,7 +202,14 @@ struct parameter : public parameter_base
 template <>
 struct parameter<std::string> : public parameter_base
 {
-    parameter(int sql_type_identifier,int c_type_identifier, const std::string& val);
+    parameter(int sql_type_identifier,int c_type_identifier, const std::string& val)
+       : parameter_base(sql_type_identifier, c_type_identifier)
+   {
+       auto result1 = unicons::convert(val.begin(),val.end(),
+                                       std::back_inserter(value_), 
+                                       unicons::conv_flags::strict);
+       value_.push_back(0);
+   }
 
     void* pvalue() override
     {
@@ -245,16 +235,120 @@ struct parameter<std::string> : public parameter_base
     std::vector<wchar_t> value_;
 };
 
+namespace transaction_policy {
+
+class transaction
+{
+public:
+    virtual bool fail() const = 0;
+
+    virtual void rollback() = 0;
+
+    virtual void commit(connection_impl& impl, std::error_code& ec) = 0;
+};
+
+class auto_commit : public virtual transaction
+{
+public:
+    auto_commit() = default;
+    auto_commit(const auto_commit&) = default;
+    auto_commit(auto_commit&& other) = default;
+
+    bool fail() const override
+    {
+        return false;
+    }
+
+    void rollback() override
+    {
+    }
+
+    void commit(connection_impl& impl, std::error_code& ec) override
+    {
+    }
+
+    void init(connection_impl* pimpl, std::error_code& ec) 
+    {
+        pimpl->auto_commit(true,ec);
+    }
+
+    void end_transaction(connection_impl* pimpl, std::error_code& ec) 
+    {
+    }
+};
+
+class man_commit : public virtual transaction
+{
+    bool rollback_;
+    bool committed_;
+public:
+    man_commit()
+        : rollback_(false), committed_(false)
+    {
+    }
+    man_commit(const man_commit&) = default;
+    man_commit(man_commit&& other) = default;
+    ~man_commit() = default;
+
+    bool fail() const override
+    {
+        return rollback_;
+    }
+
+    void rollback() override
+    {
+        rollback_ = true;
+    }
+
+    void commit(connection_impl& impl, std::error_code& ec) override
+    {
+        if (!rollback_)
+        {
+            impl.commit(ec);
+            if (!ec)
+            {
+                committed_ = true;
+            }
+        }
+        else
+        {
+            impl.rollback(ec);
+            if (!ec)
+            {
+                rollback_ = false;
+            }
+        }
+    }
+
+    void init(connection_impl* pimpl, std::error_code& ec) 
+    {
+        pimpl->auto_commit(false,ec);
+    }
+
+    void end_transaction(connection_impl* pimpl, std::error_code& ec) 
+    {
+        if (rollback_ || !committed_)
+        {
+            pimpl->rollback(ec);
+        }
+    }
+};
+
+}
+
 template <class Connector>
 class prepared_statement
 {
+    std::unique_ptr<prepared_statement_impl> pimpl_;
+    transaction_policy::transaction* tp_;
 public:
     prepared_statement() = delete;
     prepared_statement(prepared_statement&&) = default;
-    prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl);
-    ~prepared_statement();
-
-    void execute(std::error_code& ec);
+    prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl, transaction_policy::transaction* tp)
+         : pimpl_(std::move(pimpl)), tp_(tp) 
+    {
+    }
+    ~prepared_statement() = default;
 
     void execute(const jsoncons::json& parameters,
                  const std::function<void(const row& rec)>& callback,
@@ -341,181 +435,158 @@ public:
         }
         execute_(bindings,ec);
     }
-
-    void execute(const jsoncons::json& parameters, transaction& t, std::error_code& ec)
-    {
-        std::vector<std::unique_ptr<parameter_base>> bindings;
-        if (parameters.is_array())
-        {
-            bindings.reserve(parameters.size());
-            for (const auto& val : parameters.array_range())
-            {
-                switch (val.type_id())
-                {
-                case jsoncons::json_type_tag::bool_t:
-                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Connector,bool>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,bool>::c_type_identifier(),
-                                       val.as_bool()));
-                    break;
-                case jsoncons::json_type_tag::uinteger_t:
-                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Connector,uint64_t>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,uint64_t>::c_type_identifier(),
-                                       val.as_integer()));
-                    break;
-                case jsoncons::json_type_tag::integer_t:
-                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Connector,int64_t>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,int64_t>::c_type_identifier(),
-                                       val.as_integer()));
-                    break;
-                case jsoncons::json_type_tag::double_t:
-                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Connector,double>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,double>::c_type_identifier(),
-                                       val.as_double()));
-                    break;
-                case jsoncons::json_type_tag::small_string_t:
-                case jsoncons::json_type_tag::string_t:
-                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Connector,std::string>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,std::string>::c_type_identifier(),
-                                       val.as_string()));
-                    break;
-                }
-            }
-        }
-        execute_(bindings, t, ec);
-    }
 private:
     void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings,
         const std::function<void(const row& rec)>& callback,
-        std::error_code& ec);
+        std::error_code& ec)
+    {
+        if (!tp_->fail())
+        {
+            pimpl_->execute_(bindings, callback, ec);
+            if (ec)
+            {
+                tp_->rollback();
+            }
+        }
+    }
     void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings,
-        const std::function<void(const row& rec)>& callback,
-        transaction& t,
-        std::error_code& ec);
-    void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings,
-        std::error_code& ec);
-    void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                  transaction& t,
-                  std::error_code& ec);
-
-    std::unique_ptr<prepared_statement_impl> pimpl_;
+                  std::error_code& ec)
+    {
+        if (!tp_->fail())
+        {
+            pimpl_->execute_(bindings, ec);
+            if (ec)
+            {
+                tp_->rollback();
+            }
+        }
+    }
 };
-
-// prepared_statement
-
-template <class Connector>
-prepared_statement<Connector>::prepared_statement(std::unique_ptr<prepared_statement_impl>&& impl) : pimpl_(std::move(impl)) {}
-
-template <class Connector>
-prepared_statement<Connector>::~prepared_statement() = default;
-
-template <class Connector>
-void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                             const std::function<void(const row& rec)>& callback,
-                                             std::error_code& ec)
-{
-    pimpl_->execute_(bindings, callback, ec);
-}
-
-template <class Connector>
-void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                             const std::function<void(const row& rec)>& callback,
-                                             transaction& t, 
-                                             std::error_code& ec)
-{
-    pimpl_->execute_(bindings, callback, t, ec);
-}
-
-template <class Connector>
-void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                             std::error_code& ec)
-{
-    pimpl_->execute_(bindings, ec);
-}
-
-template <class Connector>
-void prepared_statement<Connector>::execute_(std::vector<std::unique_ptr<parameter_base>>& bindings, 
-                                             transaction& t, 
-                                             std::error_code& ec)
-{
-    pimpl_->execute_(bindings, t, ec);
-}
 
 // connection
 
 template <class Connector>
+class connection_pool;
+
+template <class Connector,class TP>
 class connection
 {
     std::unique_ptr<connection_impl> pimpl_;
+    TP transaction_policy_;
+    connection_pool<Connector>* pool_;
 public:
-    connection() : pimpl_(Connector::create_connection()) 
+    connection(std::unique_ptr<connection_impl> ptr, TP&& tp, connection_pool<Connector>* pool) 
+        : pimpl_(std::move(ptr)), transaction_policy_(std::move(tp)), pool_(pool) 
     {
     }
     ~connection()
     {
+        std::error_code ec;
+        transaction_policy_.end_transaction(pimpl_.get(),ec);
+        pool_->free_connection(pimpl_);
     }
 
-    void open(const std::string& connString, bool autoCommit, std::error_code& ec);
+    connection() = delete;
+    connection(const connection& other) = delete;
 
-    void auto_commit(bool val, std::error_code& ec);
-
-    void connection_timeout(size_t val, std::error_code& ec);
-
-    friend transaction make_transaction(connection<Connector>& conn)
+    connection(connection&& other)
+        : pimpl_(std::move(other.pimpl_))
     {
-        return transaction(conn.pimpl_->make_transaction());
     }
 
-    friend prepared_statement<Connector> make_prepared_statement(connection<Connector>& conn, const std::string& query, std::error_code& ec)
+    void connection_timeout(size_t val, std::error_code& ec)
     {
-        return prepared_statement<Connector>(conn.pimpl_->prepare_statement(query, ec));
+        pimpl_->connection_timeout(val, ec);
     }
 
-    void commit(std::error_code& ec);
-
-    void rollback(std::error_code& ec);
-
-    void execute(const std::string& query, 
-                 std::error_code& ec);
+    void execute(const std::string& query, std::error_code& ec)
+    {
+        if (!transaction_policy_.fail())
+        {
+            pimpl_->execute(query, ec);
+            if (ec)
+            {
+                transaction_policy_.rollback();
+            }
+        }
+    }
 
     void execute(const std::string& query, 
                  const std::function<void(const row& rec)>& callback,
-                 std::error_code& ec);
+                 std::error_code& ec)
+    {
+        if (!transaction_policy_.fail())
+        {
+            pimpl_->execute(query, callback, ec);
+            if (ec)
+            {
+                transaction_policy_.rollback();
+            }
+        }
+    }
+
+    void commit(std::error_code& ec) 
+    {
+        transaction_policy_.commit(*pimpl_,ec);
+    }
+
+    friend prepared_statement<Connector> make_prepared_statement(connection<Connector,TP>& conn, const std::string& query, std::error_code& ec)
+    {
+        return prepared_statement<Connector>(conn.pimpl_->prepare_statement(query, ec),&conn.transaction_policy_);
+    }
 };
 
-// connection<Connector>
+// connection_pool
 
 template <class Connector>
-void connection<Connector>::open(const std::string& connString, bool autoCommit, std::error_code& ec)
+class connection_pool
 {
-    pimpl_->open(connString, autoCommit, ec);
-}
+    std::string conn_string_;
+    std::mutex connection_pool_mutex_;
+    std::stack<std::unique_ptr<connection_impl>> free_connections_;
+    size_t max_pool_size_ = 0;
+public:
+    connection_pool(const std::string& conn_string, size_t pool_size)
+        : conn_string_(conn_string), max_pool_size_(pool_size)
+    {
+    }
 
-template <class Connector>
-void connection<Connector>::auto_commit(bool val, std::error_code& ec)
-{
-    pimpl_->auto_commit(val, ec);
-}
+    template <class TP = transaction_policy::auto_commit>
+    connection<Connector,TP> get_connection(std::error_code& ec)
+    {
+        std::lock_guard<std::mutex> lock(connection_pool_mutex_);
+        if (!free_connections_.empty())
+        {
+            auto conn = std::move(free_connections_.top());
+            free_connections_.pop();
+            return connection<Connector,TP>(std::move(conn), TP{}, this);;
+        }
 
-template <class Connector>
-void connection<Connector>::connection_timeout(size_t val, std::error_code& ec)
-{
-    pimpl_->connection_timeout(val, ec);
-}
+        auto ptr = Connector::create_connection(conn_string_, ec);
+        return connection<Connector,TP>(std::move(ptr), TP{}, this);
+    }
 
-template <class Connector>
-void connection<Connector>::execute(const std::string& query, 
-                                    std::error_code& ec)
-{
-    pimpl_->execute(query, ec);
-}
-
-template <class Connector>
-void connection<Connector>::execute(const std::string& query, 
-                         const std::function<void(const row& rec)>& callback,
-                         std::error_code& ec)
-{
-    pimpl_->execute(query, callback, ec);
-}
+    void free_connection(std::unique_ptr<connection_impl>& connection)
+    {
+        std::lock_guard<std::mutex> lock(connection_pool_mutex_);
+        if (free_connections_.size() >= max_pool_size_)
+        {
+            // Do nothing
+        }
+        else
+        {
+            if (connection->is_valid())
+            {
+                free_connections_.push(std::move(connection));
+            }
+            else
+            {
+                // Do nothing
+            }
+        }
+    }
+};
+ 
 
 }
 

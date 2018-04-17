@@ -1,26 +1,27 @@
 #include <sqlcons_connector/odbc/connector.hpp>
 #include <sqlcons/sqlcons.hpp>
 
-using namespace sqlcons;
-
-int query1()
+void query1()
 {
     std::error_code ec;
 
-    sqlcons::connection<sqlcons::odbc::odbc_connector> connection;
-    connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
+    const std::string databaseUrl = "Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;";
+
+    sqlcons::connection_pool<sqlcons::odbc::odbc_connector> connection_pool(databaseUrl,2);
+
+    auto connection = connection_pool.get_connection(ec);
     if (ec)
     {
         std::cerr << ec.message() << std::endl;
-        return 1;
+        return;
     }
 
     std::string query = "SELECT I.ticker, P.observation_date, P.close_price FROM equity_price P JOIN equity I ON P.instrument_id = I.instrument_id WHERE I.ticker='IBM'";
 
     auto action = [](const sqlcons::row& row)
     {
-        std::cout << row[0].as_string() << " " 
-                  << row[1].as_string() << " " 
+        std::wcout << row[0].as_wstring() << " " 
+                  << row[1].as_wstring() << " " 
                   << row[2].as_double()  
                   << std::endl;
     };
@@ -29,29 +30,31 @@ int query1()
     if (ec)
     {
         std::cerr << ec.message() << std::endl;
-        return 1;
+        return;
     }
-    return 0;
 } 
 
-int query2()
+void query2()
 {
     std::error_code ec;
 
-    sqlcons::connection<sqlcons::odbc::odbc_connector> connection;
-    connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
+    const std::string databaseUrl = "Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;";
+
+    sqlcons::connection_pool<sqlcons::odbc::odbc_connector> connection_pool(databaseUrl,2);
+
+    auto connection = connection_pool.get_connection(ec);
     if (ec)
     {
         std::cerr << ec.message() << std::endl;
-        return 1;
+        return;
     }
 
-    std::string statement = "SELECT I.ticker, P.observation_date, P.close_price FROM equity_price P JOIN equity I ON P.instrument_id = I.instrument_id WHERE I.ticker=?";
-    auto query = connection.prepare_statement(statement,ec);
+    std::string sql = "SELECT I.ticker, P.observation_date, P.close_price FROM equity_price P JOIN equity I ON P.instrument_id = I.instrument_id WHERE I.ticker=?";
+    auto statment = make_prepared_statement(connection, sql, ec);
     if (ec)
     {
         std::cerr << ec.message() << std::endl;
-        return 1;
+        return;
     }
 
     jsoncons::json parameters = jsoncons::json::array();
@@ -65,19 +68,17 @@ int query2()
                   << std::endl;
     };
 
-    query.execute(parameters, action, ec);
+    statment.execute(parameters, action, ec);
     if (ec)
     {
         std::cerr << ec.message() << std::endl;
-        return 1;
+        return;
     }
-    return 0;
 } 
 
 int main()
 {
-    int rc = 0;
-    rc = query2();
-    return rc;
+    query1();
+    query2();
 } 
 

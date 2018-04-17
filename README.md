@@ -3,111 +3,88 @@
 ## Query example
 
 ```c++
-std::error_code ec;
-
-sqlcons::connection connection;
-connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
-if (ec)
+void main()
 {
-    std::cerr << ec.message() << std::endl;
-    return;
-}
+    std::error_code ec;
 
-auto action = [](const sqlcons::row& row)
-{
-    std::cout << row[0].as_long() << " " 
-              << row[1].as_string() << " " 
-              << row[2].as_double()  
-              << std::endl;
-};
+    const std::string databaseUrl = "Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;";
 
-connection.execute("select instrument_id, observation_date, price from instrument_price",
-                   action,
-                   ec);
-if (ec)
-{
-    std::cerr << ec.message() << std::endl;
-    return;
-}
+    sqlcons::connection_pool<sqlcons::odbc::odbc_connector> connection_pool(databaseUrl,2);
+
+    auto connection = connection_pool.get_connection(ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    std::string query = "SELECT I.ticker, P.observation_date, P.close_price FROM equity_price P JOIN equity I ON P.instrument_id = I.instrument_id WHERE I.ticker='IBM'";
+
+    auto action = [](const sqlcons::row& row)
+    {
+        std::wcout << row[0].as_wstring() << " " 
+                  << row[1].as_wstring() << " " 
+                  << row[2].as_double()  
+                  << std::endl;
+    };
+
+    connection.execute(query, action, ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+} 
 ```
 
 ## Prepared statement example 1
 
 ```c++
-std::error_code ec;
+#include <sqlcons_connector/odbc/connector.hpp>
+#include <sqlcons/sqlcons.hpp>
 
-sqlcons::connection connection;
-connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
-if (ec)
+int main()
 {
-    std::cerr << ec.message() << std::endl;
-    return;
-}
+    std::error_code ec;
 
-auto statement = connection.prepare_statement(
-    "select instrument_id, observation_date, price from instrument_price where instrument_id = ?",
-    ec);
-if (ec)
-{
-    std::cerr << ec.message() << std::endl;
-    return;
-}
+    const std::string databaseUrl = "Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;";
 
-auto action = [](const sqlcons::row& row)
-{
-    std::cout << row[0].as_long() << " " 
-              << row[1].as_string() << " " 
-              << row[2].as_double()  
-              << std::endl;
-};
+    sqlcons::connection_pool<sqlcons::odbc::odbc_connector> connection_pool(databaseUrl,2);
 
-auto parameters = std::make_tuple(1);
-statement.execute(parameters, action, ec);
-if (ec)
-{
-    std::cerr << ec.message() << std::endl;
-    return;
-}
+    auto connection = connection_pool.get_connection(ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    std::string sql = "SELECT I.ticker, P.observation_date, P.close_price FROM equity_price P JOIN equity I ON P.instrument_id = I.instrument_id WHERE I.ticker=?";
+    auto statment = make_prepared_statement(connection, sql, ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+
+    jsoncons::json parameters = jsoncons::json::array();
+    parameters.push_back("IBM");
+
+    auto action = [](const sqlcons::row& row)
+    {
+        std::cout << row[0].as_string() << " " 
+                  << row[1].as_string() << " " 
+                  << row[2].as_double()  
+                  << std::endl;
+    };
+
+    statment.execute(parameters, action, ec);
+    if (ec)
+    {
+        std::cerr << ec.message() << std::endl;
+        return;
+    }
+} 
 ```
-
-## Prepared statement example 2
-
-```c++
-std::error_code ec;
-
-sqlcons::connection connection;
-connection.open("Driver={SQL Server};Server=localhost;Database=RiskSnap;Trusted_Connection=Yes;", true, ec);
-if (ec)
-{
-    std::cerr << ec.message() << std::endl;
-    return;
-}
-
-auto statement = connection.prepare_statement(
-    "select instrument_id, contract_date from futures_contract where product_id = ?",
-    ec);
-if (ec)
-{
-    std::cerr << ec.message() << std::endl;
-    return;
-}
-
-auto action = [](const sqlcons::row& row)
-{
-    std::cout << row[0].as_long() << " " 
-              << row[1].as_string() << " " 
-              << std::endl;
-};
-
-auto parameters = std::make_tuple(std::string("HO"));
-statement.execute(parameters, action, ec);
-if (ec)
-{
-    std::cerr << ec.message() << std::endl;
-    return;
-}
-```
-
 
 ## Resources
 

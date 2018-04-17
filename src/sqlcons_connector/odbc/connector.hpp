@@ -77,7 +77,7 @@ std::error_code make_error_code(odbc_errc result);
 class odbc_connector
 {
 public:
-    static std::unique_ptr<connection_impl> create_connection();
+    static std::unique_ptr<connection_impl> create_connection(const std::string& connString, std::error_code& ec);
 };
 
 }}
