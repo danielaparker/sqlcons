@@ -1,5 +1,8 @@
 #include <sqlcons_bindings/odbc/odbc_bindings.hpp>
 #include <windows.h> 
+#ifndef UNICODE  
+#define UNICODE  
+#endif
 #include <string> 
 #include <sqlext.h> 
 #include <stdio.h> 
