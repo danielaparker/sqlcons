@@ -53,12 +53,12 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
             }
 
             // Add GOOG
-            jsoncons::json properties1;
-            properties1["name"] = "Alphabet Inc.";
+            jsoncons::json dataFields1;
+            dataFields1["name"] = "Alphabet Inc.";
 
             jsoncons::json parameters1 = jsoncons::json::array();
             parameters1.push_back("GOOG");
-            parameters1.push_back(properties1.to_string());
+            parameters1.push_back(dataFields1.to_string());
 
             statement.execute(parameters1,ec);
             if (ec)
@@ -67,12 +67,12 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
             }
 
             // Add GOOG
-            jsoncons::json properties2;
-            properties2["name"] = "IBM";
+            jsoncons::json dataFields2;
+            dataFields2["name"] = "IBM";
 
             jsoncons::json parameters2 = jsoncons::json::array();
             parameters2.push_back("IBM");
-            parameters2.push_back(properties1.to_string());
+            parameters2.push_back(dataFields1.to_string());
 
             statement.execute(parameters2,ec);
             if (ec)
