@@ -63,7 +63,7 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
 
             jsoncons::json parameters1 = jsoncons::json::array();
             parameters1.push_back("GOOG");
-            parameters1.push_back(properties1.to_string());
+            parameters1.push_back(dataFields1.to_string());
 
             statement.execute(parameters1,ec);
             if (ec)
@@ -77,7 +77,7 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
 
             jsoncons::json parameters2 = jsoncons::json::array();
             parameters2.push_back("IBM");
-            parameters2.push_back(properties1.to_string());
+            parameters2.push_back(dataFields1.to_string());
 
             statement.execute(parameters2,ec);
             if (ec)
@@ -136,7 +136,7 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
             }
             auto f = [](const sqlcons::row& row)
             {            
-                std::cout << "\n(2) " << row[0].as_long() << std::endl;
+                std::cout << "\n(2) " << row[0].as_integer() << std::endl;
             };
             connection.execute("SELECT count(*) FROM stock", f, ec);
         }

@@ -585,7 +585,7 @@ public:
         return d;
     }
 
-    long as_long() const override
+    int64_t as_integer() const override
     {
         return 0;
     }
@@ -723,7 +723,7 @@ public:
         return d;
     }
 
-    long as_long() const override
+    int64_t as_integer() const override
     {
         return 0;
     }
@@ -819,7 +819,7 @@ public:
         return d;
     }
 
-    long as_long() const override
+    int64_t as_integer() const override
     {
         return 0;
     }
@@ -959,7 +959,7 @@ public:
         return d;
     }
 
-    long as_long() const override
+    int64_t as_integer() const override
     {
         return 0;
     }
@@ -973,7 +973,7 @@ public:
     SQLULEN column_size_;
     SQLSMALLINT nullable_;
 
-    long value_;
+    int64_t value_;
     SQLLEN length_or_null_;  // size or null
 
     integer_value(std::wstring&& name,
@@ -995,7 +995,7 @@ public:
 
         rc = SQLBindCol(hstmt,
             column_, 
-            SQL_C_ULONG,
+            SQL_C_SBIGINT,
             (SQLPOINTER)&value_, 
             0, 
             &length_or_null_); 
@@ -1034,7 +1034,7 @@ public:
         return (double)value_;
     }
 
-    long as_long() const override
+    int64_t as_integer() const override
     {
         return value_;
     }
@@ -1109,9 +1109,9 @@ public:
         return value_;
     }
 
-    long as_long() const override
+    int64_t as_integer() const override
     {
-        return (long)value_;
+        return value_;
     }
 };
 

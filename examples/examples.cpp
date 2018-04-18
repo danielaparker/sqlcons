@@ -131,7 +131,7 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
             }
             auto f = [](const sqlcons::row& row)
             {            
-                std::cout << "\n(2) " << row[0].as_long() << std::endl;
+                std::cout << "\n(2) " << row[0].as_integer() << std::endl;
             };
             connection.execute("SELECT count(*) FROM stock", f, ec);
         }

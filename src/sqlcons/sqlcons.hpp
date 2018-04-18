@@ -28,7 +28,7 @@ public:
 
     virtual double as_double() const = 0;
 
-    virtual long as_long() const = 0;
+    virtual int64_t as_integer() const = 0;
 };
 
 // row
