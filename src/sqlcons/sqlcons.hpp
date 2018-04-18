@@ -115,7 +115,7 @@ struct parameter_base
     int c_type_identifier_;
 };
 
-template <class Connector, class T>
+template <class Bindings, class T>
 struct sql_type_traits
 {
     typedef T value_type;
@@ -254,6 +254,11 @@ public:
     auto_commit(const auto_commit&) = default;
     auto_commit(auto_commit&& other) = default;
 
+    bool is_auto_commit() const
+    {
+        return true;
+    }
+
     bool fail() const override
     {
         return false;
@@ -289,6 +294,11 @@ public:
     man_commit(const man_commit&) = default;
     man_commit(man_commit&& other) = default;
     ~man_commit() = default;
+
+    bool is_auto_commit() const
+    {
+        return false;
+    }
 
     bool fail() const override
     {
@@ -336,7 +346,7 @@ public:
 
 }
 
-template <class Connector>
+template <class Bindings>
 class prepared_statement
 {
     std::unique_ptr<prepared_statement_impl> pimpl_;
@@ -363,29 +373,29 @@ public:
                 switch (val.type_id())
                 {
                 case jsoncons::json_type_tag::bool_t:
-                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Connector,bool>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,bool>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Bindings,bool>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,bool>::c_type_identifier(),
                                        val.as_bool()));
                     break;
                 case jsoncons::json_type_tag::uinteger_t:
-                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Connector,uint64_t>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,uint64_t>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Bindings,uint64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,uint64_t>::c_type_identifier(),
                                        val.as_integer()));
                     break;
                 case jsoncons::json_type_tag::integer_t:
-                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Connector,int64_t>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,int64_t>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Bindings,int64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,int64_t>::c_type_identifier(),
                                        val.as_integer()));
                     break;
                 case jsoncons::json_type_tag::double_t:
-                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Connector,double>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,double>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Bindings,double>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,double>::c_type_identifier(),
                                        val.as_double()));
                     break;
                 case jsoncons::json_type_tag::small_string_t:
                 case jsoncons::json_type_tag::string_t:
-                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Connector,std::string>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,std::string>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Bindings,std::string>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,std::string>::c_type_identifier(),
                                        val.as_string()));
                     break;
                 }
@@ -405,29 +415,29 @@ public:
                 switch (val.type_id())
                 {
                 case jsoncons::json_type_tag::bool_t:
-                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Connector,bool>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,bool>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<bool>>(sql_type_traits<Bindings,bool>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,bool>::c_type_identifier(),
                                        val.as_bool()));
                     break;
                 case jsoncons::json_type_tag::uinteger_t:
-                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Connector,uint64_t>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,uint64_t>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<uint64_t>>(sql_type_traits<Bindings,uint64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,uint64_t>::c_type_identifier(),
                                        val.as_integer()));
                     break;
                 case jsoncons::json_type_tag::integer_t:
-                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Connector,int64_t>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,int64_t>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<int64_t>>(sql_type_traits<Bindings,int64_t>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,int64_t>::c_type_identifier(),
                                        val.as_integer()));
                     break;
                 case jsoncons::json_type_tag::double_t:
-                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Connector,double>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,double>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<double>>(sql_type_traits<Bindings,double>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,double>::c_type_identifier(),
                                        val.as_double()));
                     break;
                 case jsoncons::json_type_tag::small_string_t:
                 case jsoncons::json_type_tag::string_t:
-                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Connector,std::string>::sql_type_identifier(), 
-                                       sql_type_traits<Connector,std::string>::c_type_identifier(),
+                    bindings.push_back(std::make_unique<parameter<std::string>>(sql_type_traits<Bindings,std::string>::sql_type_identifier(), 
+                                       sql_type_traits<Bindings,std::string>::c_type_identifier(),
                                        val.as_string()));
                     break;
                 }
@@ -465,17 +475,17 @@ private:
 
 // connection
 
-template <class Connector>
+template <class Bindings>
 class connection_pool;
 
-template <class Connector,class TP>
+template <class Bindings,class TP>
 class connection
 {
     std::unique_ptr<connection_impl> pimpl_;
     TP transaction_policy_;
-    connection_pool<Connector>* pool_;
+    connection_pool<Bindings>* pool_;
 public:
-    connection(std::unique_ptr<connection_impl> ptr, TP&& tp, connection_pool<Connector>* pool) 
+    connection(std::unique_ptr<connection_impl> ptr, TP&& tp, connection_pool<Bindings>* pool) 
         : pimpl_(std::move(ptr)), transaction_policy_(std::move(tp)), pool_(pool) 
     {
     }
@@ -530,15 +540,15 @@ public:
         transaction_policy_.commit(*pimpl_,ec);
     }
 
-    friend prepared_statement<Connector> make_prepared_statement(connection<Connector,TP>& conn, const std::string& query, std::error_code& ec)
+    friend prepared_statement<Bindings> make_prepared_statement(connection<Bindings,TP>& conn, const std::string& query, std::error_code& ec)
     {
-        return prepared_statement<Connector>(conn.pimpl_->prepare_statement(query, ec),&conn.transaction_policy_);
+        return prepared_statement<Bindings>(conn.pimpl_->prepare_statement(query, ec),&conn.transaction_policy_);
     }
 };
 
 // connection_pool
 
-template <class Connector>
+template <class Bindings>
 class connection_pool
 {
     std::string conn_string_;
@@ -552,18 +562,21 @@ public:
     }
 
     template <class TP = transaction_policy::auto_commit>
-    connection<Connector,TP> get_connection(std::error_code& ec)
+    connection<Bindings,TP> get_connection(std::error_code& ec)
     {
         std::lock_guard<std::mutex> lock(connection_pool_mutex_);
+        TP tp;
         if (!free_connections_.empty())
         {
-            auto conn = std::move(free_connections_.top());
+            auto conn_ptr = std::move(free_connections_.top());
+            conn_ptr->auto_commit(tp.is_auto_commit(), ec);
             free_connections_.pop();
-            return connection<Connector,TP>(std::move(conn), TP{}, this);;
+            return connection<Bindings,TP>(std::move(conn_ptr), std::move(tp), this);;
         }
 
-        auto ptr = Connector::create_connection(conn_string_, ec);
-        return connection<Connector,TP>(std::move(ptr), TP{}, this);
+        auto conn_ptr = Bindings::create_connection(conn_string_, ec);
+        conn_ptr->auto_commit(tp.is_auto_commit(), ec);
+        return connection<Bindings,TP>(std::move(conn_ptr), std::move(tp), this);
     }
 
     void free_connection(std::unique_ptr<connection_impl>& connection)
