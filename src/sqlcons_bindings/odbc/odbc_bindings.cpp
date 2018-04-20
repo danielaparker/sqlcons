@@ -174,6 +174,7 @@ std::string odbc_error_category_impl::message(int ev) const
 class odbc_connection_impl : public virtual connection_impl
 {
     bool autoCommit_;
+    bool rollback_;
 public:
     SQLHENV     henv_;
     SQLHDBC     hdbc_; 
@@ -199,6 +200,24 @@ public:
                  std::error_code& ec) override;
 
     bool is_valid() const override;
+
+    void begin_tran(std::error_code& ec)
+    {
+        auto_commit(false,ec);
+        rollback_ = false;
+    }
+
+    void end_tran(std::error_code& ec)
+    {
+        if (rollback_)
+        {
+            rollback(ec);
+        }
+        else
+        {
+            commit(ec);
+        }
+    }
 };
 
 // odbc_prepared_statement_impl
@@ -283,7 +302,7 @@ public:
 // odbc_connection_impl
 
 odbc_connection_impl::odbc_connection_impl()
-    : henv_(nullptr), hdbc_(nullptr), autoCommit_(false)
+    : henv_(nullptr), hdbc_(nullptr), autoCommit_(false), rollback_(false)
 {
 }
 
@@ -346,6 +365,10 @@ void odbc_connection_impl::execute(const std::string& query,
 {
     statement_impl q;
     q.execute(hdbc_,query,callback,ec);
+    if (ec)
+    {
+        rollback_ = true;
+    }
 }
 
 bool odbc_connection_impl::is_valid() const
@@ -365,6 +388,10 @@ void odbc_connection_impl::execute(const std::string& query,
 {
     statement_impl q;
     q.execute(hdbc_,query,ec);
+    if (ec)
+    {
+        rollback_ = true;
+    }
 }
 
 void odbc_connection_impl::open(const std::string& connString, std::error_code& ec)

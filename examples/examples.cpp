@@ -107,35 +107,33 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
 
     // Transactions
     {
-        // Transaction will be rolled back since we don't call connection.commit()
+        // Transaction will be rolled back since one of the two execute fails
         {
-            auto connection = pool.get_connection<sqlcons::transaction_policy::man_commit>(ec);
+            auto connection2 = pool.get_connection(ec);
             if (ec)
             {
                 return;
             }
-            connection.execute("DELETE FROM stock", ec);
-            if (ec)
             {
-                return;
+                sqlcons::trans t(connection2, ec);
+                if (ec)
+                {
+                    return;
+                }
+                connection2.execute("DELETE FROM stock WHERE symbol = 'GOOG'", ec); 
+                connection2.execute("DELETE FROM stoc WHERE symbol = 'IBM'", ec); // fails
+                if (ec)
+                {
+                    return;
+                }
             }
-            // connection.commit(ec);
-        }
 
-        // Let's check
-        {
-            auto connection = pool.get_connection(ec);
-            if (ec)
-            {
-                return;
-            }
             auto f = [](const sqlcons::row& row)
             {            
                 std::cout << "\n(2) " << row[0].as_integer() << std::endl;
             };
-            connection.execute("SELECT count(*) FROM stock", f, ec);
+            connection2.execute("SELECT count(*) FROM stock", f, ec);
         }
-
     }
 }
 
@@ -147,7 +145,7 @@ int main()
     quotes(databaseUrl, ec);
     if (ec)
     {
-        std::cerr << ec.message() << std::endl;
+        std::cerr << "End " << ec.message() << std::endl;
     }
 } 
 

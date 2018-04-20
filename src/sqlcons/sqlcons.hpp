@@ -161,6 +161,10 @@ public:
                          std::error_code& ec) = 0;
 
     virtual bool is_valid() const = 0;
+
+    virtual void begin_tran(std::error_code& ec) = 0;
+
+    virtual void end_tran(std::error_code& ec) = 0;
 };
 
 // parameter<T>
@@ -235,127 +239,15 @@ struct parameter<std::string> : public parameter_base
     std::vector<wchar_t> value_;
 };
 
-namespace transaction_policy {
-
-class transaction
-{
-public:
-    virtual bool fail() const = 0;
-
-    virtual void rollback() = 0;
-
-    virtual void commit(connection_impl& impl, std::error_code& ec) = 0;
-};
-
-class auto_commit : public virtual transaction
-{
-public:
-    auto_commit() = default;
-    auto_commit(const auto_commit&) = default;
-    auto_commit(auto_commit&& other) = default;
-
-    bool is_auto_commit() const
-    {
-        return true;
-    }
-
-    bool fail() const override
-    {
-        return false;
-    }
-
-    void rollback() override
-    {
-    }
-
-    void commit(connection_impl& impl, std::error_code& ec) override
-    {
-    }
-
-    void init(connection_impl* pimpl, std::error_code& ec) 
-    {
-        pimpl->auto_commit(true,ec);
-    }
-
-    void end_transaction(connection_impl* pimpl, std::error_code& ec) 
-    {
-    }
-};
-
-class man_commit : public virtual transaction
-{
-    bool rollback_;
-    bool committed_;
-public:
-    man_commit()
-        : rollback_(false), committed_(false)
-    {
-    }
-    man_commit(const man_commit&) = default;
-    man_commit(man_commit&& other) = default;
-    ~man_commit() = default;
-
-    bool is_auto_commit() const
-    {
-        return false;
-    }
-
-    bool fail() const override
-    {
-        return rollback_;
-    }
-
-    void rollback() override
-    {
-        rollback_ = true;
-    }
-
-    void commit(connection_impl& impl, std::error_code& ec) override
-    {
-        if (!rollback_)
-        {
-            impl.commit(ec);
-            if (!ec)
-            {
-                committed_ = true;
-            }
-        }
-        else
-        {
-            impl.rollback(ec);
-            if (!ec)
-            {
-                rollback_ = false;
-            }
-        }
-    }
-
-    void init(connection_impl* pimpl, std::error_code& ec) 
-    {
-        pimpl->auto_commit(false,ec);
-    }
-
-    void end_transaction(connection_impl* pimpl, std::error_code& ec) 
-    {
-        if (rollback_ || !committed_)
-        {
-            pimpl->rollback(ec);
-        }
-    }
-};
-
-}
-
 template <class Bindings>
 class prepared_statement
 {
     std::unique_ptr<prepared_statement_impl> pimpl_;
-    transaction_policy::transaction* tp_;
 public:
     prepared_statement() = delete;
     prepared_statement(prepared_statement&&) = default;
-    prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl, transaction_policy::transaction* tp)
-         : pimpl_(std::move(pimpl)), tp_(tp) 
+    prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl)
+         : pimpl_(std::move(pimpl)) 
     {
     }
     ~prepared_statement() = default;
@@ -450,49 +342,36 @@ private:
         const std::function<void(const row& rec)>& callback,
         std::error_code& ec)
     {
-        if (!tp_->fail())
-        {
-            pimpl_->execute_(bindings, callback, ec);
-            if (ec)
-            {
-                tp_->rollback();
-            }
-        }
+        pimpl_->execute_(bindings, callback, ec);
     }
     void execute_(std::vector<std::unique_ptr<parameter_base>>& bindings,
                   std::error_code& ec)
     {
-        if (!tp_->fail())
-        {
-            pimpl_->execute_(bindings, ec);
-            if (ec)
-            {
-                tp_->rollback();
-            }
-        }
+        pimpl_->execute_(bindings, ec);
     }
 };
 
 // connection
 
+class trans;
+
 template <class Bindings>
 class connection_pool;
 
-template <class Bindings,class TP>
+template <class Bindings>
 class connection
 {
+    friend class trans;
     std::unique_ptr<connection_impl> pimpl_;
-    TP transaction_policy_;
     connection_pool<Bindings>* pool_;
 public:
-    connection(std::unique_ptr<connection_impl> ptr, TP&& tp, connection_pool<Bindings>* pool) 
-        : pimpl_(std::move(ptr)), transaction_policy_(std::move(tp)), pool_(pool) 
+    connection(std::unique_ptr<connection_impl> ptr, connection_pool<Bindings>* pool) 
+        : pimpl_(std::move(ptr)), pool_(pool) 
     {
     }
     ~connection()
     {
         std::error_code ec;
-        transaction_policy_.end_transaction(pimpl_.get(),ec);
         pool_->free_connection(pimpl_);
     }
 
@@ -511,38 +390,23 @@ public:
 
     void execute(const std::string& query, std::error_code& ec)
     {
-        if (!transaction_policy_.fail())
-        {
-            pimpl_->execute(query, ec);
-            if (ec)
-            {
-                transaction_policy_.rollback();
-            }
-        }
+        pimpl_->execute(query, ec);
     }
 
     void execute(const std::string& query, 
                  const std::function<void(const row& rec)>& callback,
                  std::error_code& ec)
     {
-        if (!transaction_policy_.fail())
-        {
-            pimpl_->execute(query, callback, ec);
-            if (ec)
-            {
-                transaction_policy_.rollback();
-            }
-        }
+        pimpl_->execute(query, callback, ec);
     }
 
     void commit(std::error_code& ec) 
     {
-        transaction_policy_.commit(*pimpl_,ec);
     }
 
-    friend prepared_statement<Bindings> make_prepared_statement(connection<Bindings,TP>& conn, const std::string& query, std::error_code& ec)
+    friend prepared_statement<Bindings> make_prepared_statement(connection<Bindings>& conn, const std::string& query, std::error_code& ec)
     {
-        return prepared_statement<Bindings>(conn.pimpl_->prepare_statement(query, ec),&conn.transaction_policy_);
+        return prepared_statement<Bindings>(conn.pimpl_->prepare_statement(query, ec));
     }
 };
 
@@ -561,22 +425,20 @@ public:
     {
     }
 
-    template <class TP = transaction_policy::auto_commit>
-    connection<Bindings,TP> get_connection(std::error_code& ec)
+    connection<Bindings> get_connection(std::error_code& ec)
     {
         std::lock_guard<std::mutex> lock(connection_pool_mutex_);
-        TP tp;
-        if (!free_connections_.empty())
+        if (!free_connections_.empty() && false)
         {
             auto conn_ptr = std::move(free_connections_.top());
-            conn_ptr->auto_commit(tp.is_auto_commit(), ec);
+            conn_ptr->auto_commit(true,ec);
             free_connections_.pop();
-            return connection<Bindings,TP>(std::move(conn_ptr), std::move(tp), this);;
+            return connection<Bindings>(std::move(conn_ptr), this);;
         }
 
         auto conn_ptr = Bindings::create_connection(conn_string_, ec);
-        conn_ptr->auto_commit(tp.is_auto_commit(), ec);
-        return connection<Bindings,TP>(std::move(conn_ptr), std::move(tp), this);
+        conn_ptr->auto_commit(true,ec);
+        return connection<Bindings>(std::move(conn_ptr), this);
     }
 
     void free_connection(std::unique_ptr<connection_impl>& connection)
@@ -600,6 +462,23 @@ public:
     }
 };
  
+class trans
+{
+    std::unique_ptr<connection_impl> pimpl_;
+public:
+    template <class Bindings>
+    trans(connection<Bindings>& conn, std::error_code& ec)
+        : pimpl_(conn.pimpl_.get())
+    {
+        pimpl_->begin_tran(ec);
+    }
+
+    ~trans()
+    {
+        std::error_code ec;
+        pimpl_->end_tran(ec);
+    }
+};
 
 }
 
