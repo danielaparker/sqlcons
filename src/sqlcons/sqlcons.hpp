@@ -550,6 +550,8 @@ public:
     template <class TP = transaction_rule::auto_commit>
     connection<Bindings,TP> get_connection(std::error_code& ec)
     {
+        ec.clear();
+
         std::lock_guard<std::mutex> lock(connection_pool_mutex_);
         TP tp;
         if (!free_connections_.empty())

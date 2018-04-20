@@ -114,12 +114,8 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
             {
                 return;
             }
-            connection.execute("DELETE FROM stock", ec);
-            if (ec)
-            {
-                return;
-            }
-            // connection.commit(ec);
+            connection.execute("DELETE FROM stock WHERE symbol = 'GOOG'", ec); 
+            connection.execute("DELETE FROM stock WHERE symbo = 'IBM'", ec); // fails
         }
 
         // Let's check
