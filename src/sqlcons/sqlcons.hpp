@@ -235,7 +235,7 @@ struct parameter<std::string> : public parameter_base
     std::vector<wchar_t> value_;
 };
 
-namespace transaction_policy {
+namespace transaction_rule {
 
 class transaction
 {
@@ -243,8 +243,6 @@ public:
     virtual bool fail() const = 0;
 
     virtual void rollback() = 0;
-
-    virtual void commit(connection_impl& impl, std::error_code& ec) = 0;
 };
 
 class auto_commit : public virtual transaction
@@ -268,10 +266,6 @@ public:
     {
     }
 
-    void commit(connection_impl& impl, std::error_code& ec) override
-    {
-    }
-
     void init(connection_impl* pimpl, std::error_code& ec) 
     {
         pimpl->auto_commit(true,ec);
@@ -282,18 +276,18 @@ public:
     }
 };
 
-class man_commit : public virtual transaction
+class all_or_none : public virtual transaction
 {
     bool rollback_;
     bool committed_;
 public:
-    man_commit()
+    all_or_none()
         : rollback_(false), committed_(false)
     {
     }
-    man_commit(const man_commit&) = default;
-    man_commit(man_commit&& other) = default;
-    ~man_commit() = default;
+    all_or_none(const all_or_none&) = default;
+    all_or_none(all_or_none&& other) = default;
+    ~all_or_none() = default;
 
     bool is_auto_commit() const
     {
@@ -310,26 +304,6 @@ public:
         rollback_ = true;
     }
 
-    void commit(connection_impl& impl, std::error_code& ec) override
-    {
-        if (!rollback_)
-        {
-            impl.commit(ec);
-            if (!ec)
-            {
-                committed_ = true;
-            }
-        }
-        else
-        {
-            impl.rollback(ec);
-            if (!ec)
-            {
-                rollback_ = false;
-            }
-        }
-    }
-
     void init(connection_impl* pimpl, std::error_code& ec) 
     {
         pimpl->auto_commit(false,ec);
@@ -337,9 +311,21 @@ public:
 
     void end_transaction(connection_impl* pimpl, std::error_code& ec) 
     {
-        if (rollback_ || !committed_)
+        if (!rollback_)
+        {
+            pimpl->commit(ec);
+            if (!ec)
+            {
+                committed_ = true;
+            }
+        }
+        else
         {
             pimpl->rollback(ec);
+            if (!ec)
+            {
+                rollback_ = false;
+            }
         }
     }
 };
@@ -350,11 +336,11 @@ template <class Bindings>
 class prepared_statement
 {
     std::unique_ptr<prepared_statement_impl> pimpl_;
-    transaction_policy::transaction* tp_;
+    transaction_rule::transaction* tp_;
 public:
     prepared_statement() = delete;
     prepared_statement(prepared_statement&&) = default;
-    prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl, transaction_policy::transaction* tp)
+    prepared_statement(std::unique_ptr<prepared_statement_impl>&& pimpl, transaction_rule::transaction* tp)
          : pimpl_(std::move(pimpl)), tp_(tp) 
     {
     }
@@ -561,7 +547,7 @@ public:
     {
     }
 
-    template <class TP = transaction_policy::auto_commit>
+    template <class TP = transaction_rule::auto_commit>
     connection<Bindings,TP> get_connection(std::error_code& ec)
     {
         std::lock_guard<std::mutex> lock(connection_pool_mutex_);

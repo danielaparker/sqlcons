@@ -109,7 +109,7 @@ void quotes(const std::string& databaseUrl, std::error_code& ec)
     {
         // Transaction will be rolled back since we don't call connection.commit()
         {
-            auto connection = pool.get_connection<sqlcons::transaction_policy::man_commit>(ec);
+            auto connection = pool.get_connection<sqlcons::transaction_rule::all_or_none>(ec);
             if (ec)
             {
                 return;
