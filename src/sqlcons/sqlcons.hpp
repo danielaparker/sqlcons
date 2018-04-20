@@ -521,9 +521,9 @@ public:
         }
     }
 
-    void commit(std::error_code& ec) 
+    void rollback(std::error_code& ec) 
     {
-        transaction_policy_.commit(*pimpl_,ec);
+        transaction_policy_.rollback(*pimpl_,ec);
     }
 
     friend prepared_statement<Bindings> make_prepared_statement(connection<Bindings,TP>& conn, const std::string& query, std::error_code& ec)
