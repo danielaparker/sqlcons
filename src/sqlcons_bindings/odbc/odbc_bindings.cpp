@@ -257,10 +257,20 @@ class statement_impl
 {
     SQLHSTMT hstmt_; 
 public:
-    statement_impl()
+    statement_impl(SQLHDBC hDbc, std::error_code& ec)
         : hstmt_(nullptr)
     {
+        RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hstmt_);
+        if (rc == SQL_ERROR)
+        {
+            handle_diagnostic_record(hDbc, SQL_HANDLE_DBC, rc, ec);
+            return;
+        }
     }
+
+    statement_impl(const statement_impl&) = delete;
+
+    statement_impl(statement_impl&&) = default;
 
     ~statement_impl()
     {
@@ -270,12 +280,10 @@ public:
         } 
     }
 
-    void execute(SQLHDBC hDbc, 
-                 const std::string& query, 
+    void execute(const std::string& query, 
                  std::error_code& ec);
 
-    void execute(SQLHDBC hDbc, 
-                 const std::string& query, 
+    void execute(const std::string& query, 
                  const std::function<void(const row& rec)>& callback,
                  std::error_code& ec);
 };
@@ -344,8 +352,12 @@ void odbc_connection_impl::execute(const std::string& query,
                                    const std::function<void(const row& rec)>& callback,
                                    std::error_code& ec)
 {
-    statement_impl q;
-    q.execute(hdbc_,query,callback,ec);
+    statement_impl q(hdbc_, ec);
+    if (ec)
+    {
+        return;
+    }
+    q.execute(query,callback,ec);
 }
 
 bool odbc_connection_impl::is_valid() const
@@ -363,8 +375,12 @@ bool odbc_connection_impl::is_valid() const
 void odbc_connection_impl::execute(const std::string& query, 
                                std::error_code& ec)
 {
-    statement_impl q;
-    q.execute(hdbc_,query,ec);
+    statement_impl q(hdbc_, ec);
+    if (ec)
+    {
+        return;
+    }
+    q.execute(query,ec);
 }
 
 void odbc_connection_impl::open(const std::string& connString, std::error_code& ec)
@@ -1118,8 +1134,7 @@ public:
 
 // statement_impl
 
-void statement_impl::execute(SQLHDBC hDbc, 
-                             const std::string& query, 
+void statement_impl::execute(const std::string& query, 
                              const std::function<void(const row& rec)>& callback,
                              std::error_code& ec)
 {
@@ -1128,14 +1143,7 @@ void statement_impl::execute(SQLHDBC hDbc,
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
 
-    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hstmt_);
-    if (rc == SQL_ERROR)
-    {
-        handle_diagnostic_record(hDbc, SQL_HANDLE_DBC, rc, ec);
-        return;
-    }
-
-    rc = SQLExecDirect(hstmt_, &buf[0], (SQLINTEGER)buf.size()); 
+    RETCODE rc = SQLExecDirect(hstmt_, &buf[0], (SQLINTEGER)buf.size()); 
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
@@ -1145,8 +1153,7 @@ void statement_impl::execute(SQLHDBC hDbc,
     process_results(hstmt_, callback, ec);
 }
 
-void statement_impl::execute(SQLHDBC hDbc, 
-                             const std::string& query, 
+void statement_impl::execute(const std::string& query, 
                              std::error_code& ec)
 {
     std::wstring buf;
@@ -1154,14 +1161,7 @@ void statement_impl::execute(SQLHDBC hDbc,
                                     std::back_inserter(buf), 
                                     unicons::conv_flags::strict);
 
-    RETCODE rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hstmt_);
-    if (rc == SQL_ERROR)
-    {
-        handle_diagnostic_record(hDbc, SQL_HANDLE_DBC, rc, ec);
-        return;
-    }
-
-    rc = SQLExecDirect(hstmt_, &buf[0], (SQLINTEGER)buf.size()); 
+    RETCODE rc = SQLExecDirect(hstmt_, &buf[0], (SQLINTEGER)buf.size()); 
     if (rc == SQL_ERROR)
     {
         handle_diagnostic_record(hstmt_, SQL_HANDLE_STMT, rc, ec);
